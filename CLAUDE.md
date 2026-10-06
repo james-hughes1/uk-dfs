@@ -100,3 +100,7 @@ Each phase ends with something shareable, so the project is useful even if it st
 - [NESO: DFS participation guidance (BL01 worked example)](https://www.neso.energy/document/286981/download)
 - [Elexon: P376 baselining methodology](https://www.elexon.co.uk/bsc/documents/groups/panel/2021-meeting/312-march/312-04-p376-utilising-a-baselining-methodology-to-set-physical-notifications-for-settlement-of-applicable-balancing-services/)
 - [Carbon Brief: DFS 2022/23 Q&A](https://www.carbonbrief.org/qa-how-great-britains-demand-flexibility-service-is-cutting-costs-and-co2-emissions)
+
+## Working rules for Claude
+
+- **Never commit.** Claude must not run `git commit`, `push`, `merge`, `rebase`, `cherry-pick`, `revert` or `am` in this repo, and should not offer to. James reviews and commits every change himself. Leave all work uncommitted in the working tree. (Enforced by deny rules in `.claude/settings.json`.)
