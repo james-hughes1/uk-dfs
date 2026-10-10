@@ -36,12 +36,12 @@ Section numbers follow the report (`reports/report/report.tex`). For each analys
 
 ### Part A: national check
 - [ ] **A1. 2022/23 events** (step test 45%, curve fit 71% of claim)
-  - [ ] Explore (notebook 02, charts 11–15)
-  - [ ] Code: demand/DFS/weather loaders out of `notebooks/_common.py` into `data/`; event study into `evaluation/`
+  - [x] Explore (notebook 02, charts 11–15)
+  - [x] Code: demand/DFS/weather loaders out of `notebooks/_common.py` into `data/`; event study into `evaluation/`
   - [ ] Write up, including the comparison with Centre for Net Zero's ~87%
 - [ ] **A2. Events since Oct 2023** (not verifiable: interconnector confound)
-  - [ ] Explore (chart 15b)
-  - [ ] Code: matched-day correction and same-day placebo
+  - [x] Explore (chart 15b)
+  - [x] Code: matched-day correction and same-day placebo
   - [ ] Write up
 - [ ] **A3. How many events would it take?** (regional slope 0.90, SE 1.05)
   - [ ] Explore: GSP → DFS zone regression
@@ -105,6 +105,7 @@ Section numbers follow the report (`reports/report/report.tex`). For each analys
 - [ ] Docker image
 - [ ] Add `reports/` to the Layout above
 - [ ] Regenerate all charts from a clean checkout to check reproducibility
+- [ ] At the end: run all notebooks top to bottom, regenerate every chart and output, and commit them in one go
 
 ## AI Collaboration
 
