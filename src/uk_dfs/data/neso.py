@@ -11,10 +11,13 @@ DFS season is published as its own dataset with three CSVs:
 names (e.g. `2223_live_summary.csv`) because NESO's own names change between releases.
 
 Fetches are idempotent: a file already on disk is left alone unless `force=True`.
+`load_dfs()` and `load_demand()` read the cached files into tidy tables.
 """
 
 import urllib.request
 from pathlib import Path
+
+import pandas as pd
 
 from uk_dfs.config import RAW_DIR
 
@@ -114,3 +117,79 @@ def fetch_demand(force: bool = False) -> list[str]:
         for name, (resource, remote) in DEMAND_FILES.items()
         if _download(_url(DEMAND_DATASET, resource, remote), DEMAND_DIR / name, force)
     ]
+
+
+# --- Loading -------------------------------------------------------------------------------
+
+TZ = "Europe/London"
+
+# Column names differ between releases; map them all onto one short set
+DFS_COLUMNS = {
+    "Date": "date", "Delivery Date": "date",
+    "From": "from", "From_Local": "from", "To": "to", "To_Local": "to",
+    "Service Requirement Type": "type",
+    "DFS Required": "req", "DFS Required MW": "req", "Service Requirement MW": "req",
+    "DFS Procured": "proc", "DFS Procured MW": "proc",
+    "Bids Accepted Total Cost": "cost", "DFS Provider Bids Accepted Total Cost GBP": "cost",
+    "Settled Volume": "settled", "Settled Volume MW": "settled",
+    "Settled Cost": "settled_cost", "Settled Cost GBP": "settled_cost",
+    "Event Type": "direction", "Event Tag": "tag", "Event ID": "event_id",
+    "DFS Provider": "provider", "Registered DFS Participant": "provider",
+    "DFS Volume": "mw", "DFS Volume MW": "mw",
+    "Price": "price", "Utilisation Price GBP per MWh": "price", "Status": "status",
+}  # fmt: skip
+
+# file prefix -> (season label, event type); 2022/23 live and test were published separately
+DFS_RELEASES = {
+    "2223_live": ("2022/23", "Live"),
+    "2223_test": ("2022/23", "Test"),
+    "2325": ("2023/24", None),
+    "2526": ("2024–26", None),
+    "2627": ("2026/27", None),
+}
+
+
+def read_dfs(path: Path, release: str, event_type: str | None = None) -> pd.DataFrame:
+    """One DFS CSV with tidy column names and a local wall-clock `start` per half-hour."""
+    df = pd.read_csv(path, encoding="utf-8-sig")
+    df.columns = df.columns.str.strip()  # 2022/23 headers carry trailing spaces
+    if path.stem.endswith("utilisation"):
+        df = df.rename(columns={"DFS Procured MW": "mw"})  # per-bid volume in later releases
+    df = df.rename(columns=DFS_COLUMNS)
+    df["release"] = release
+    if event_type:
+        df["type"] = event_type
+    df["date"] = pd.to_datetime(df["date"], dayfirst=True)
+    # releases before turn-up existed have no direction column: all events were turn-down
+    default = pd.Series("Downwards", index=df.index)
+    df["direction"] = df.get("direction", default).fillna("Downwards")
+    df["start"] = pd.to_datetime(df["date"].dt.strftime("%Y-%m-%d") + " " + df["from"])
+    return df
+
+
+def load_dfs(kind: str = "summary") -> pd.DataFrame:
+    """Every DFS release stacked: `summary` (one row per event half-hour) or `utilisation`
+    (one row per accepted bid). Run `fetch_dfs()` first."""
+    parts = [
+        read_dfs(DFS_DIR / f"{prefix}_{kind}.csv", release, event_type)
+        for prefix, (release, event_type) in DFS_RELEASES.items()
+    ]
+    out = pd.concat(parts, ignore_index=True)
+    return out.sort_values("start", kind="stable").reset_index(drop=True)
+
+
+def load_demand() -> pd.DataFrame:
+    """Half-hourly national demand indexed by local wall-clock start. Run `fetch_demand()`.
+
+    Settlement period 1 starts at local midnight; counting forward in UTC gets the 46- and
+    50-period clock-change days right. `underlying` adds back embedded solar and wind,
+    which national demand (ND) nets off.
+    """
+    dem = pd.concat([pd.read_csv(DEMAND_DIR / name) for name in DEMAND_FILES], ignore_index=True)
+    day = pd.to_datetime(dem.SETTLEMENT_DATE, format="mixed")
+    midnight = day.dt.tz_localize(TZ).dt.tz_convert("UTC")
+    utc = midnight + pd.to_timedelta((dem.SETTLEMENT_PERIOD - 1) * 30, unit="min")
+    dem["start"] = utc.dt.tz_convert(TZ).dt.tz_localize(None)
+    dem["date"] = day
+    dem["underlying"] = dem.ND + dem.EMBEDDED_SOLAR_GENERATION + dem.EMBEDDED_WIND_GENERATION
+    return dem.set_index("start").sort_index()
