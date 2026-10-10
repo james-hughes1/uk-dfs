@@ -9,6 +9,11 @@ from uk_dfs.reporting.style import AQUA, BLUE, GRID, INK2, ORANGE, style
 
 COLOURS = dict(zip(GROUPS, (BLUE, ORANGE), strict=True))
 TESTS = ("Real events", "Placebo: non-event days", "Placebo: event day, earlier")
+FAMILIES = {  # reference period -> what it assumes
+    "before": "Before the event: assumes nothing unusual beforehand",
+    "after": "After the event: assumes delayed use has returned",
+    "both": "Before + after: assumes both, cancels steady drift",
+}
 
 
 def plot_event_study(result: Result) -> plt.Figure:
@@ -17,7 +22,7 @@ def plot_event_study(result: Result) -> plt.Figure:
     est, spec = result.estimates, result.spec
     groups = [g for g in GROUPS if (est.table.group == g).any()]
     with style():
-        fig = plt.figure(figsize=(14, 10))
+        fig = plt.figure(figsize=(14, 11))
         gs = fig.add_gridspec(2, 2, height_ratios=[1, 1.1])
 
         for i, g in enumerate(groups):
@@ -65,21 +70,32 @@ def plot_event_study(result: Result) -> plt.Figure:
 
         ax = fig.add_subplot(gs[1, 1])
         rb = result.robustness
-        labels = [f"{'before' if r.reference == 'before' else 'before + after'} · "
-                  f"{r.ref} min · gap {r.gap}" for r in rb.itertuples()]  # fmt: skip
-        rb = rb.assign(label=labels)
-        order = list(dict.fromkeys(labels))
-        for k, g in enumerate(groups):
-            q = rb[rb.group == g].set_index("label").loc[order]
-            yy = -np.arange(len(order)) + (0.15 if k == 0 else -0.15)
-            ax.errorbar(q.ratio, yy, xerr=[q.ratio - q.lo, q.hi - q.ratio], fmt="o",
-                        color=COLOURS[g], ms=4, capsize=2, lw=0.8, label=g)  # fmt: skip
-        ax.set_yticks(-np.arange(len(order)), order, fontsize=8)
-        main = rb[rb.main].label.iloc[0]
-        ax.get_yticklabels()[order.index(main)].set_fontweight("bold")
+        y, ticks, labels = 0.0, [], []
+        for family, header in FAMILIES.items():
+            ax.text(-2.9, y + 0.1, header, fontsize=8, color=INK2, style="italic")
+            y -= 0.8
+            for (ref, gap), q in rb[rb.reference == family].groupby(["ref", "gap"], sort=False):
+                for k, g in enumerate(groups):
+                    r = q[q.group == g]
+                    if r.empty:
+                        continue
+                    r = r.iloc[0]
+                    yy = y + (0.15 if k == 0 else -0.15)
+                    ax.errorbar(r.ratio, yy, xerr=[[r.ratio - r.lo], [r.hi - r.ratio]],
+                                fmt="o", color=COLOURS[g], ms=4, capsize=2, lw=0.8,
+                                label=g if not labels else None)  # fmt: skip
+                ticks.append(y)
+                labels.append((f"{ref} min · gap {gap}", q.main.any()))
+                y -= 1
+            y -= 0.3
+        ax.set_yticks(ticks, [text for text, _ in labels], fontsize=8)
+        for tick, (_, main) in zip(ax.get_yticklabels(), labels, strict=True):
+            if main:
+                tick.set_fontweight("bold")
         ax.axvline(0, color=INK2, lw=0.8)
         ax.axvline(1, color=AQUA, ls="--", lw=1.5)
         ax.set_xlim(-3, 4)
+        ax.set_ylim(y + 0.5, 0.6)
         ax.set_xlabel("Detected ÷ claimed, 95% CI")
         ax.set_title("Robustness: reference period (main specification in bold)", fontsize=10)
         ax.legend(loc="lower right", fontsize=8)

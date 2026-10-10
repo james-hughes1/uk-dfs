@@ -18,6 +18,11 @@ detected ÷ claimed = Σδ / Σclaim, with a bootstrap over events; 5-minute slo
 event are strongly autocorrelated, so the event is the unit of resampling. Placebos:
 each matched day as a fake event, and the event day earlier in the afternoon.
 
+Robustness: the same events with other reference periods, in three families that fail in
+different ways. Before the event (biased if use is raised or brought forward, e.g. to
+inflate the 2022/23 in-day adjustment), after it (biased if delayed use returns), or both
+(cancels a steady drift, but exposed to both). All are reported; the main one is fixed.
+
 Typical use:
 
     from uk_dfs.evaluation import event_study
@@ -44,7 +49,8 @@ class Spec:
     ref: int = 60  # reference period length
     gap: int = 10  # skipped just before the event, when early responders start
     after: int = 60  # kept after the event for the event-study profile
-    reference: str = "before"  # "before", or "both" to add [end + gap, end + gap + ref)
+    # "before": [−gap − ref, −gap); "after": [end + gap, end + gap + ref); "both": the two
+    reference: str = "before"
     max_len: int = 120  # longer events are dropped
     window_days: int = 21  # matched days: within this many days of the event
     max_temp_diff: float = 2.0  # matched days: daily mean temperature within this, °C
@@ -63,16 +69,21 @@ class Spec:
 
     def slots(self, minutes: int) -> np.ndarray:
         """Minutes from event start covered by one event's panel, in 5-minute steps."""
+        if self.reference == "after":
+            return np.arange(0, minutes + self.gap + self.ref, 5)
         return np.arange(-self.gap - self.ref, minutes + self.gap + self.after, 5)
 
     def reference_slots(self, minutes: int) -> np.ndarray:
         before = np.arange(-self.gap - self.ref, -self.gap, 5)
+        after = np.arange(minutes + self.gap, minutes + self.gap + self.ref, 5)
         if self.reference == "before":
             return before
+        if self.reference == "after":
+            return after
         if self.reference == "both":
             if self.after < self.ref:
                 raise ValueError("reference='both' needs after >= ref")
-            return np.r_[before, np.arange(minutes + self.gap, minutes + self.gap + self.ref, 5)]
+            return np.r_[before, after]
         raise ValueError(f"unknown reference: {self.reference!r}")
 
 
@@ -180,6 +191,7 @@ STEPS = {
     "clean": "No data glitches, hour before to hour after",
     "matched": "At least 4 matched days with clean data",
 }
+SCREEN_COLUMNS = [*list(STEPS)[1:], "n_controls", "used"]  # what `screen` adds
 
 
 def screen(
@@ -190,17 +202,17 @@ def screen(
     spec: Spec = MAIN,
 ) -> pd.DataFrame:
     """`events` plus one boolean column per filter in `STEPS` (applied in that order),
-    `n_controls` (clean matched days) and `used` (passes every filter)."""
+    `n_controls` (clean matched days) and `used` (passes every filter). Re-running it
+    on its own output, with another spec, re-screens."""
+    events = events.drop(columns=SCREEN_COLUMNS, errors="ignore")
     rows = []
     for i, e in events.iterrows():
-        end = e.m0 + e.minutes
+        last = e.m0 + spec.slots(e.minutes)[-1] + 5  # end of the panel
         others = events[(events.date == e.date) & (events.index != i)].m0
         r = {
             "short": e.minutes <= spec.max_len,
             "has_5min": e.date in fm.values.index,
-            "alone": not (
-                (others > e.m0 - spec.guard) & (others < end + spec.gap + spec.after)
-            ).any(),
+            "alone": not ((others > e.m0 - spec.guard) & (others < last)).any(),
             "clean": False,
             "matched": False,
             "n_controls": np.nan,
@@ -297,13 +309,14 @@ def placebo_null(fakes: list, claim, rng: np.random.Generator, n: int = 2000) ->
 
 def summarise(est: Estimates, n_boot: int = 2000, seed: int = 0) -> pd.DataFrame:
     """Detected ÷ claimed per group for real events and both placebos, with 95% intervals.
-    `p` is the share of the non-event-day null at or above the real estimate."""
-    rng = np.random.default_rng(seed)
+    `p` is the share of the non-event-day null at or above the real estimate. Each group
+    starts from `seed`, so its real-events interval matches the main row of `robustness`."""
     out = []
     for g in GROUPS:
         t = est.table[est.table.group == g]
         if t.empty:
             continue
+        rng = np.random.default_rng(seed)
         r, lo, hi = bootstrap_ratio(t.delta, t.claim, rng, n_boot)
         null = placebo_null([est.fakes[i] for i in t.index], t.claim, rng, n_boot)
         out.append({"group": g, "test": "Real events", "ratio": r, "lo": lo, "hi": hi,
@@ -352,6 +365,16 @@ def twfe(est: Estimates, group: str, spec: Spec = MAIN) -> dict:
     return out
 
 
+# (reference, ref, gap) for the robustness check, grouped by family. Before 50/10 ends where
+# the 2022/23 in-day adjustment window (3 hours ending 1 hour before the event) ends.
+VARIANTS = [
+    ("before", 30, 10), ("before", 60, 10), ("before", 90, 10),
+    ("before", 60, 0), ("before", 60, 20), ("before", 50, 10),
+    ("after", 60, 10), ("after", 120, 10), ("after", 60, 60), ("after", 120, 60),
+    ("both", 30, 10), ("both", 60, 10), ("both", 90, 10),
+]  # fmt: skip
+
+
 def robustness(
     screened: pd.DataFrame,
     fm: FiveMinute,
@@ -361,22 +384,25 @@ def robustness(
     n_boot: int = 2000,
     seed: int = 0,
 ) -> pd.DataFrame:
-    """Detected ÷ claimed under alternative reference periods, on the same events."""
-    variants = [replace(spec, ref=r, after=r) for r in (30, 60, 90)]
-    variants += [replace(spec, gap=g) for g in (0, 20)]
-    variants += [replace(spec, ref=r, after=r, reference="both") for r in (30, 60, 90)]
-    rng = np.random.default_rng(seed)
+    """Detected ÷ claimed under every variant in `VARIANTS`, one row per variant and group.
+
+    Each variant re-screens the main spec's events (a longer panel can lose some, to data
+    gaps, midnight or a nearby event) and bootstraps from `seed`, like `summarise`."""
+    main = (spec.reference, spec.ref, spec.gap)
     out = []
-    for v in variants:
-        t = estimate(screened, fm, pool, daily_temp, v).table
+    for family, ref, gap in VARIANTS:
+        v = replace(spec, reference=family, ref=ref, gap=gap, after=max(spec.after, ref))
+        s = screen(screened, fm, pool, daily_temp, v)
+        s["used"] &= screened.used
+        t = estimate(s, fm, pool, daily_temp, v).table
         for g in GROUPS:
             x = t[t.group == g]
             if x.empty:
                 continue
-            r, lo, hi = bootstrap_ratio(x.delta, x.claim, rng, n_boot)
-            out.append({"reference": v.reference, "ref": v.ref, "gap": v.gap, "group": g,
+            r, lo, hi = bootstrap_ratio(x.delta, x.claim, np.random.default_rng(seed), n_boot)
+            out.append({"reference": family, "ref": ref, "gap": gap, "group": g,
                         "ratio": r, "lo": lo, "hi": hi, "n": len(x),
-                        "main": v == spec})  # fmt: skip
+                        "main": (family, ref, gap) == main})  # fmt: skip
     return pd.DataFrame(out)
 
 
