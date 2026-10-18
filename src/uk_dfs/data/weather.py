@@ -1,12 +1,15 @@
-"""Open-Meteo historical weather for Great Britain.
+"""Open-Meteo historical weather: Great Britain (2022–26) and London (2011–14).
 
-One hourly series per city from the Open-Meteo archive (reanalysis observations, not
+GB: one hourly series per city from the Open-Meteo archive (reanalysis observations, not
 forecasts), averaged with rough metro-population weights into a single GB series. Fine for
 exploration and for matching days by temperature; models that predict demand should train
 on historical *forecasts* instead, to avoid leakage.
 
-`fetch_weather()` caches the raw JSON in data/raw/open_meteo/ and is idempotent: a file
-already on disk is left alone unless `force=True`.
+London: the single grid cell for the Low Carbon London homes, Nov 2011 – Feb 2014, with
+daily sunset times.
+
+`fetch_weather()` and `fetch_london_weather()` cache the raw JSON in data/raw/open_meteo/
+and are idempotent: a file already on disk is left alone unless `force=True`.
 """
 
 import json
@@ -20,8 +23,10 @@ from uk_dfs.config import RAW_DIR
 
 WEATHER_DIR = RAW_DIR / "open_meteo"
 HOURLY_FILE = WEATHER_DIR / "hourly_2022_2026.json"
+LONDON_FILE = WEATHER_DIR / "london_hourly_2011_2014.json"
 API = "https://archive-api.open-meteo.com/v1/archive"
 START, END = "2022-01-01", "2026-09-30"
+LONDON_START, LONDON_END = "2011-11-01", "2014-03-01"
 TZ = "Europe/London"
 
 # city -> (latitude, longitude, rough metro population in millions). Coordinates are the
@@ -57,16 +62,40 @@ def weather_url(start: str = START, end: str = END) -> str:
     return f"{API}?{urllib.parse.urlencode(query)}"
 
 
+def london_url(start: str = LONDON_START, end: str = LONDON_END) -> str:
+    """The London cell only, plus daily sunset."""
+    lat, lon, _ = CITIES["London"]
+    query = {
+        "latitude": lat,
+        "longitude": lon,
+        "start_date": start,
+        "end_date": end,
+        "hourly": ",".join(VARIABLES),
+        "daily": "sunset",
+        "timezone": "GMT",
+    }
+    return f"{API}?{urllib.parse.urlencode(query)}"
+
+
+def _download(url: str, path, force: bool) -> bool:
+    if path.exists() and path.stat().st_size > 0 and not force:
+        return False
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".json.part")  # so a failed download never looks complete
+    with urllib.request.urlopen(url, timeout=300) as r:
+        tmp.write_bytes(r.read())
+    tmp.replace(path)
+    return True
+
+
 def fetch_weather(force: bool = False) -> bool:
     """Cache hourly weather for the GB cities. Returns True if it downloaded."""
-    if HOURLY_FILE.exists() and HOURLY_FILE.stat().st_size > 0 and not force:
-        return False
-    WEATHER_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = HOURLY_FILE.with_suffix(".json.part")  # so a failed download never looks complete
-    with urllib.request.urlopen(weather_url(), timeout=300) as r:
-        tmp.write_bytes(r.read())
-    tmp.replace(HOURLY_FILE)
-    return True
+    return _download(weather_url(), HOURLY_FILE, force)
+
+
+def fetch_london_weather(force: bool = False) -> bool:
+    """Cache hourly London weather for the LCL period. Returns True if it downloaded."""
+    return _download(london_url(), LONDON_FILE, force)
 
 
 def gb_weather(raw: list[dict]) -> pd.DataFrame:
@@ -93,3 +122,23 @@ def load_weather() -> pd.DataFrame:
 def daily_temperature(weather: pd.DataFrame) -> pd.Series:
     """Mean GB temperature per local calendar day, °C."""
     return weather.temp.groupby(weather.index.normalize()).mean()
+
+
+def london_daily(raw: dict) -> pd.DataFrame:
+    """Per local calendar day: mean temperature (°C) and sunset (local hours)."""
+    t = pd.Series(
+        raw["hourly"]["temperature_2m"],
+        index=pd.to_datetime(raw["hourly"]["time"]).tz_localize("UTC").tz_convert(TZ),
+    )
+    temp = t.groupby(t.index.tz_localize(None).normalize()).mean()
+    sunset = pd.to_datetime(raw["daily"]["sunset"]).tz_localize("UTC").tz_convert(TZ)
+    out = pd.DataFrame(
+        {"sunset_h": sunset.hour + sunset.minute / 60},
+        index=pd.to_datetime(raw["daily"]["time"]),
+    )
+    return out.join(temp.rename("temp"))
+
+
+def load_london_weather() -> pd.DataFrame:
+    """London daily weather from the cached file (run `fetch_london_weather()` first)."""
+    return london_daily(json.loads(LONDON_FILE.read_text()))

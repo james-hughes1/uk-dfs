@@ -68,11 +68,13 @@ In three steps: measure baseline error with nobody responding, build a better ba
 **Step 2: a better baseline**
 - [ ] **B3. Better baselines** (only inputs participants can't influence: no same-day usage before the event)
   - [ ] Explore (chart `bl_07`: temperature scaling, gradient boosting)
-  - [ ] Score on per-meter error as well as portfolio bias (the floor acts on per-meter noise)
-  - [ ] Block-bootstrap CIs on the difference in MAE against BL01
-  - [ ] Switch to historical weather *forecasts* (Open-Meteo)
-  - [ ] Fix gradient boosting's +1.2% bias
-  - [ ] Code and write up
+  - [x] Code: `models/baselines.py`, `evaluation/better_baselines.py`, `tests/test_better_baselines.py`
+  - [x] Full seasonal years: train Mar 2012 – Feb 2013, test Mar 2013 – Feb 2014; home size from the training year only (was leaking)
+  - [x] Score on per-meter error as well as portfolio bias (the floor acts on per-meter noise)
+  - [x] Paired block-bootstrap CIs on the change in MAE against BL01
+  - [x] Fix gradient boosting's bias (level-free corrections: +0.6%)
+  - [x] Forecast-error sensitivity (archived forecasts don't reach 2012–14; adds SD 1.5 °C noise)
+  - [ ] Write up
 
 **Step 3: rules and behaviour**
 - [ ] **B4. The in-day adjustment, against a known true effect (ToU vs control)**

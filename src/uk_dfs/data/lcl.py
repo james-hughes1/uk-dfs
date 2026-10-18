@@ -90,6 +90,14 @@ def load_tariffs() -> pd.DataFrame:
     return t.rename(columns={"TariffDateTime": "ts", "Tariff": "signal"})
 
 
+def signal_days(dates: pd.DatetimeIndex) -> np.ndarray:
+    """bool (D,): local days with any High or Low half-hour (the trial's "event days")."""
+    t = load_tariffs()
+    local = t.ts.dt.tz_localize("UTC").dt.tz_convert("Europe/London").dt.tz_localize(None)
+    days = local[t.signal != "Normal"].dt.normalize().unique()
+    return np.asarray(pd.DatetimeIndex(dates).isin(days))
+
+
 SLOT_MEANS = OUT / "slot_means.parquet"
 DAILY = OUT / "household_daily.parquet"
 
