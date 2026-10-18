@@ -32,7 +32,7 @@ tests/
 
 ## To-do
 
-Section numbers follow the report (`reports/report/report.tex`). For each analysis, the three stages are **explore** (notebook), **code** (move into `src/uk_dfs` with tests) and **write up** (report section).
+Section numbers follow the report (`reports/report/report.tex`). For each analysis, the three stages are **explore** (notebook), **code** (move into `src/uk_dfs` with tests) and **write up** (report section). Uncertainty throughout: bootstrap over events for Part A, moving-block bootstrap over days (weeks for price events) for Part B.
 
 ### Part A: national check
 - [ ] **A1. 2022/23 events** (step test 45%, curve fit 71% of claim)
@@ -43,46 +43,76 @@ Section numbers follow the report (`reports/report/report.tex`). For each analys
   - [x] Explore (chart 15b)
   - [x] Code: matched-day correction and same-day placebo
   - [ ] Write up
-- [ ] **A3. How many events would it take?** (regional slope 0.90, SE 1.05)
-  - [ ] Explore: GSP → DFS zone regression
-  - [ ] Formal simulation-based power analysis
+- [ ] **A3. How many events would it take?** (pilot zone regression: slope 0.90, SE 1.05)
+  - [ ] Simulation: add known effects to non-event days, rerun A1's estimator, record the detection rate by effect size and number of events
   - [ ] Code and write up
 
 ### Part B: household baselines (Low Carbon London)
+In three steps: measure baseline error with nobody responding, build a better baseline, then add the settlement rules and participant behaviour on top of it. Notebook 04's section labels predate this order.
+
+**Step 1: baseline error**
 - [ ] **B1. Placebo accuracy**
   - [ ] Explore (notebook 04, charts `bl_01`, `bl_02`)
   - [ ] Code: BL01 in `models/bl01.py`, unit tests in `tests/test_bl01.py`
-  - [ ] Extend beyond the single 17:00–18:00 window (2-hour, DFS-style windows)
+  - [x] Fix the LCL half-hour offset (raw readings are end-labelled; `lcl.build()` relabels to the start)
+  - [x] Code: placebo errors, per-meter and portfolio accuracy, block bootstrap (`evaluation/baseline_error.py`, `tests/test_baseline_error.py`)
+  - [x] DFS-length windows (1–2 h, starts 16:00–19:00), scored per half-hour
+  - [x] Block-bootstrap CIs
+  - [ ] Windows at each real DFS event's time and length (C1)
   - [ ] Write up
 - [ ] **B2. When is it biased?**
   - [ ] Explore (charts `bl_03`, `bl_04`)
-  - [ ] One regression of error on all conditions together
-  - [ ] Code and write up
-- [ ] **B3. Known true effect (ToU vs control)**
-  - [ ] Explore (chart `bl_05`)
-  - [ ] Event-level CIs that allow for correlated events
-  - [ ] Code and write up
-- [ ] **B4. Selection (NESO days, household opt-in)**
-  - [ ] Explore (chart `bl_06`)
-  - [ ] Calibrate ρ (how predictable households' own evening use is)
-  - [ ] Replace stylised day pools with NESO's real event-calling pattern (sunset, wind, import drops)
-  - [ ] Code and write up
-- [ ] **B5. Settlement floor**
-  - [ ] Explore (+25% phantom delivery, assuming a per-meter floor)
-  - [ ] **Confirm how settlement applies the floor** (per meter per half-hour?) with NESO or a provider
-  - [ ] Find the share of manual vs auto opt-in homes
+  - [x] One regression of daily error on temperature change, temperature, day type and start time (block-bootstrap CIs; `baseline_error.bias_regression`)
   - [ ] Write up
-- [ ] **B6. Better baselines**
+
+**Step 2: a better baseline**
+- [ ] **B3. Better baselines** (only inputs participants can't influence: no same-day usage before the event)
   - [ ] Explore (chart `bl_07`: temperature scaling, gradient boosting)
+  - [ ] Score on per-meter error as well as portfolio bias (the floor acts on per-meter noise)
+  - [ ] Block-bootstrap CIs on the difference in MAE against BL01
   - [ ] Switch to historical weather *forecasts* (Open-Meteo)
-  - [ ] Fix gradient boosting's +1.6% bias
-  - [ ] Hierarchical Bayesian baseline
+  - [ ] Fix gradient boosting's +1.2% bias
   - [ ] Code and write up
 
-### Optional extensions
-- [ ] **C. Price and value:** supply curve as prices fell from £3,000/MWh; DFS vs Balancing Mechanism cost
-- [ ] **£ scenario:** apply Part B bias ranges to settled volumes, as labelled scenarios
-- [ ] Small dashboard of results by event
+**Step 3: rules and behaviour**
+- [ ] **B4. The in-day adjustment, against a known true effect (ToU vs control)**
+  - [ ] Explore (chart `bl_05`)
+  - [ ] Bootstrap by week (nearby events are correlated)
+  - [ ] Code and write up
+- [ ] **B5. Household opt-in** (reported over a range of ρ)
+  - [ ] Explore (chart `bl_06`, right panel)
+  - [ ] Code and write up
+- [ ] **B6. Settlement floor**
+  - [ ] Explore (+24% phantom delivery per hour, +27% per half-hour, assuming a per-meter floor)
+  - [ ] Explore how opt-in and the floor interact via the share of negative meters (notebook 04 B6b, chart `bl_06b`: ~40% negative with no response)
+  - [x] Find the rule: per meter per settlement period (Guidance V11 Appendix 2 rule 7; V18 §3.6, Table 2)
+  - [ ] Confirm with NESO or a provider that settlement follows the guidance in practice
+  - [ ] Find the share of manual vs auto opt-in homes
+  - [ ] Look for a published share of DFS meters with negative delivery
+  - [ ] Write up
+- [ ] **B7. Alternative rules** (settled against the Step 2 baseline)
+  - [ ] One or two rules, e.g. netting negatives across a unit's meters; judged on placebo claims ≈ 0 and ToU claims ≈ true effect
+  - [ ] Code and write up
+
+### Part C: what it means for DFS
+- [ ] **C1. Transfer to DFS conditions**
+  - [ ] Describe every live DFS event: start, length, day type, GB temperature, temperature change vs its own BL01 baseline days, rules regime
+  - [ ] Placebo windows on the LCL homes at each event's clock time and length
+  - [ ] Post-stratify: weight LCL cells (temperature-change band × day type × start time) by their share of DFS events, for each rules regime (replaces B5's stylised day pools)
+  - [ ] Code and write up
+- [ ] **C2. Overpayment scenarios**
+  - [ ] Three or four labelled scenarios on settled volumes × prices, capped at the volume bid
+  - [ ] Waterfall chart: baseline error, then the floor, then participant behaviour (stated order)
+  - [ ] Cross-check against Part A and Centre for Net Zero's ~13%
+  - [ ] Write up
+- [ ] **C3. Who bears it** (one paragraph: BSUoS on final demand → bill payers; cite the charging rules)
+
+### Further work (out of scope for now)
+- Hierarchical Bayesian baseline
+- Calibrating ρ from how predictable households' evening use is
+- A fitted bias model with Monte Carlo uncertainty and a Shapley split by cause
+- Price response and value for money against the Balancing Mechanism
+- Small dashboard of results by event
 
 ### Literature review
 - [ ] Find and confirm sources (section 2 of the report)
