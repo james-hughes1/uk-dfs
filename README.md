@@ -35,12 +35,10 @@ tests/
 Section numbers follow the report (`reports/report/report.tex`). For each analysis, the three stages are **explore** (notebook), **code** (move into `src/uk_dfs` with tests) and **write up** (report section). Uncertainty throughout: bootstrap over events for Part A, moving-block bootstrap over days (weeks for price events) for Part B.
 
 ### Part A: national check
-- [ ] **A1. 2022/23 events** (step test 45%, curve fit 71% of claim)
-  - [x] Explore (notebook 02, charts 11–15)
+- [ ] **A1. 2022/23 events** (difference-in-differences: 1.11× claim, CI −0.63 to 3.25)
   - [x] Code: demand/DFS/weather loaders out of `notebooks/_common.py` into `data/`; event study into `evaluation/`
   - [ ] Write up, including the comparison with Centre for Net Zero's ~87%
-- [ ] **A2. Events since Oct 2023** (not verifiable: interconnector confound)
-  - [x] Explore (chart 15b)
+- [ ] **A2. Events since Oct 2023** (not verifiable: −0.01× claim, CI −3.51 to 2.81)
   - [x] Code: matched-day correction and same-day placebo
   - [ ] Write up
 - [ ] **A3. How many events would it take?** (pilot zone regression: slope 0.90, SE 1.05)
@@ -48,26 +46,23 @@ Section numbers follow the report (`reports/report/report.tex`). For each analys
   - [ ] Code and write up
 
 ### Part B: household baselines (Low Carbon London)
-In three steps: measure baseline error with nobody responding, build a better baseline, then add the settlement rules and participant behaviour on top of it. Notebook 04's section labels predate this order.
+In three steps: measure baseline error with nobody responding, build a better baseline, then add the settlement rules and participant behaviour on top of it.
 
 **Step 1: baseline error**
 - [ ] **B1. Placebo accuracy**
-  - [ ] Explore (notebook 04, charts `bl_01`, `bl_02`)
   - [ ] Code: BL01 in `models/bl01.py`, unit tests in `tests/test_bl01.py`
   - [x] Fix the LCL half-hour offset (raw readings are end-labelled; `lcl.build()` relabels to the start)
   - [x] Code: placebo errors, per-meter and portfolio accuracy, block bootstrap (`evaluation/baseline_error.py`, `tests/test_baseline_error.py`)
   - [x] DFS-length windows (1–2 h, starts 16:00–19:00), scored per half-hour
   - [x] Block-bootstrap CIs
-  - [ ] Windows at each real DFS event's time and length (C1)
+  - [x] Windows at each real DFS event's time and length (C1)
   - [ ] Write up
 - [ ] **B2. When is it biased?**
-  - [ ] Explore (charts `bl_03`, `bl_04`)
   - [x] One regression of daily error on temperature change, temperature, day type and start time (block-bootstrap CIs; `baseline_error.bias_regression`)
   - [ ] Write up
 
 **Step 2: a better baseline**
 - [ ] **B3. Better baselines** (only inputs participants can't influence: no same-day usage before the event)
-  - [ ] Explore (chart `bl_07`: temperature scaling, gradient boosting)
   - [x] Code: `models/baselines.py`, `evaluation/better_baselines.py`, `tests/test_better_baselines.py`
   - [x] Full seasonal years: train Mar 2012 – Feb 2013, test Mar 2013 – Feb 2014; home size from the training year only (was leaking)
   - [x] Score on per-meter error as well as portfolio bias (the floor acts on per-meter noise)
@@ -77,16 +72,14 @@ In three steps: measure baseline error with nobody responding, build a better ba
   - [ ] Write up
 
 **Step 3: rules and behaviour**
-- [ ] **B4. The in-day adjustment, against a known true effect (ToU vs control)**
-  - [ ] Explore (chart `bl_05`)
-  - [ ] Bootstrap by week (nearby events are correlated)
-  - [ ] Code and write up
+- [ ] **B4. Reality check: a real, randomised response (ToU vs control)** (kept short: the trial isn't DFS)
+  - [x] Code: first hour of each High event; true effect, BL01 claim, share of meters negative (`evaluation/reality_check.py`, `tests/test_reality_check.py`)
+  - [ ] Write up
 - [ ] **B5. Household opt-in** (reported over a range of ρ)
-  - [ ] Explore (chart `bl_06`, right panel)
-  - [ ] Code and write up
+  - [x] Code: ρ sweep with per-home foresight, both BL01 variants, opt-in rate sensitivity, block-bootstrap CIs (`evaluation/opt_in.py`, `tests/test_opt_in.py`)
+  - [ ] Write up
 - [ ] **B6. Settlement floor**
-  - [ ] Explore (+24% phantom delivery per hour, +27% per half-hour, assuming a per-meter floor)
-  - [ ] Explore how opt-in and the floor interact via the share of negative meters (notebook 04 B6b, chart `bl_06b`: ~40% negative with no response)
+  - [x] Code: share negative and floored claim by condition and start time, opt-in × true-saving grid, block-bootstrap CIs (`evaluation/floor.py`, `tests/test_floor.py`; ToU response from `reality_check`)
   - [x] Find the rule: per meter per settlement period (Guidance V11 Appendix 2 rule 7; V18 §3.6, Table 2)
   - [ ] Confirm with NESO or a provider that settlement follows the guidance in practice
   - [ ] Find the share of manual vs auto opt-in homes
@@ -98,10 +91,13 @@ In three steps: measure baseline error with nobody responding, build a better ba
 
 ### Part C: what it means for DFS
 - [ ] **C1. Transfer to DFS conditions**
-  - [ ] Describe every live DFS event: start, length, day type, GB temperature, temperature change vs its own BL01 baseline days, rules regime
-  - [ ] Placebo windows on the LCL homes at each event's clock time and length
-  - [ ] Post-stratify: weight LCL cells (temperature-change band × day type × start time) by their share of DFS events, for each rules regime (replaces B5's stylised day pools)
-  - [ ] Code and write up
+  - [x] Describe every DFS turn-down event: start, length, day type, season, GB temperature, temperature change vs its own BL01 baseline days, rules regime (turn-up out of scope)
+  - [x] Placebo windows on the LCL homes at each event's clock time and length
+  - [x] Post-stratify: match each event to LCL days in its cell (temperature-change band × day type × season; coarsens where thin), for each rules regime (replaces B5's stylised day pools)
+  - [x] Code: `evaluation/dfs_conditions.py`, `tests/test_dfs_conditions.py`; England & Wales bank holidays to 2026 in `models/bl01.py`; `temperature_change` accepts 5–9 working baseline days, as BL01 does
+  - [ ] Refresh GB weather past 30 Sep 2026 (one October event has no temperature)
+  - [ ] Opt-in (ρ) and the floor on DFS conditions: rerun B5/B6's opt-in at each event's window, then post-stratify as above, so C2's waterfall layers share one footing (A2's median event is 3 h, not B5's 1 h at 17:00)
+  - [ ] Write up
 - [ ] **C2. Overpayment scenarios**
   - [ ] Three or four labelled scenarios on settled volumes × prices, capped at the volume bid
   - [ ] Waterfall chart: baseline error, then the floor, then participant behaviour (stated order)
@@ -128,7 +124,7 @@ In three steps: measure baseline error with nobody responding, build a better ba
 - [ ] Embed the 3–5 key charts (currently `[Figure: …]` placeholders)
 - [ ] Background section: how DFS pays, BL01, rule timeline
 - [ ] Recommendations and overall limitations
-- [ ] Summary, written last
+- [ ] Finalise at the end
 - [ ] README rewrite that leads with the findings
 
 ### Engineering
