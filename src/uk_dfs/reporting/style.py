@@ -4,7 +4,10 @@ import matplotlib.pyplot as plt
 
 # Categorical palette, always assigned in this order
 BLUE, ORANGE, AQUA, YELLOW = "#2a78d6", "#eb6834", "#1baf7a", "#eda100"
-INK, INK2, GRID = "#0b0b0b", "#52514e", "#e4e3df"
+CATEGORICAL = (BLUE, ORANGE, AQUA, YELLOW)
+# Ordinal ramp (one hue, light to dark) for ordered series such as savings levels
+BLUE_RAMP = ("#86b6ef", "#5598e7", "#2a78d6", "#1c5cab", "#104281")
+INK, INK2, MUTED, GRID = "#0b0b0b", "#52514e", "#898781", "#e4e3df"
 
 RC = {
     "figure.dpi": 110,
