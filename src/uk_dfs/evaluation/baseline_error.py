@@ -167,6 +167,66 @@ def meter_stats(e: np.ndarray, use: np.ndarray, mask: np.ndarray) -> dict:
     }
 
 
+SUMS = ("meters", "half_hours", "neg_meters", "neg_hh", "claim", "floored_meter",
+        "floored_hh", "use")  # fmt: skip
+
+
+def day_sums(e: np.ndarray, use: np.ndarray, mask: np.ndarray) -> np.ndarray:
+    """Per day (rows) the totals behind every settlement ratio, columns as in `SUMS`:
+    meters (home-days) and half-hours counted, how many are negative, and summed claim,
+    floored claim (per meter over the window, and per half-hour) and use, in W·half-hours.
+    Summing rows over any set of days and calling `claim_stats` gives ratios of means, so
+    a bootstrap over days only resamples rows."""
+    m = mask[..., None]
+    L = e.shape[-1]
+    e0 = np.where(m, e, 0.0)
+    e_w = e0.mean(-1)
+    return np.column_stack([
+        mask.sum(0),
+        mask.sum(0) * L,
+        (mask & (e_w < 0)).sum(0),
+        (m & (e0 < 0)).sum((0, 2)),
+        e0.sum((0, 2)),
+        np.maximum(e_w, 0).sum(0) * L,
+        np.maximum(e0, 0).sum((0, 2)),
+        np.where(m, use, 0.0).sum((0, 2)),
+    ]).astype(float)  # fmt: skip
+
+
+CLAIM_STATS = ("negative_pct", "negative_hh_pct", "claim_pct", "floored_meter_pct",
+               "floored_pct", "floor_adds_pct")  # fmt: skip
+
+
+def claim_stats(sums: np.ndarray) -> np.ndarray:
+    """From `day_sums` rows: share of meters and of half-hours negative (%), and the plain
+    claim, the claim floored per meter, floored per half-hour (as the rules apply it) and
+    what the half-hour floor adds, all % of use."""
+    s = dict(zip(SUMS, sums.sum(0), strict=True))
+    claim = s["claim"] / s["use"] * 100
+    floored = s["floored_hh"] / s["use"] * 100
+    return np.array([
+        s["neg_meters"] / s["meters"] * 100,
+        s["neg_hh"] / s["half_hours"] * 100,
+        claim,
+        s["floored_meter"] / s["use"] * 100,
+        floored,
+        floored - claim,
+    ])  # fmt: skip
+
+
+def claim_summary(sums: np.ndarray, n_boot: int = 1000, block: int = 7, seed: int = 0) -> dict:
+    """`claim_stats` with 95% moving-block bootstrap intervals over days (days with no
+    usable meters dropped): {stat, stat_lo, stat_hi, ...} plus the meter count."""
+    sums = sums[sums[:, 0] > 0]
+    est = claim_stats(sums)
+    draws = block_bootstrap(len(sums), lambda i: claim_stats(sums[i]), block, n_boot,
+                            np.random.default_rng(seed))  # fmt: skip
+    out = {"meters": int(sums[:, 0].sum())}
+    for k, v, lo, hi in zip(CLAIM_STATS, est, *interval(draws), strict=True):
+        out |= {k: v, f"{k}_lo": lo, f"{k}_hi": hi}
+    return out
+
+
 def portfolio_daily(
     e: np.ndarray, use: np.ndarray, mask: np.ndarray, dates: pd.DatetimeIndex, min_homes: int = 200
 ) -> pd.DataFrame:

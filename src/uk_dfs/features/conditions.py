@@ -3,9 +3,9 @@
 The key one is the temperature change: the day's temperature minus the average over the
 days BL01 would draw its baseline from. BL01 assumes the event day looks like those days,
 so it errs when the weather has moved since. The day selection mirrors `models.bl01`
-(same day type, previous 60 days, not a clock-change or event day; 10 most recent for a
-working day, 4 for a non-working day) at portfolio level, so it ignores each home's
-missing data and the middle-two rule for non-working days.
+(same day type, previous 60 days, not a clock-change or event day; up to 10 most recent
+for a working day, at least 5; exactly 4 for a non-working day) at portfolio level, so it
+ignores each home's missing data and the middle-two rule for non-working days.
 """
 
 import numpy as np
@@ -26,9 +26,9 @@ def temperature_change(
     out = np.full(len(dates), np.nan)
     for d in range(len(dates)):
         c = np.arange(d - 1, max(-1, d - bl01.WINDOW_DAYS - 1), -1)  # most recent first
-        k = 10 if work[d] else 4
+        k, k_min = (10, 5) if work[d] else (4, 4)
         c = c[(work[c] == work[d]) & usable[c]][:k]
-        if len(c) == k:
+        if len(c) >= k_min:
             out[d] = t[d] - t[c].mean()
     return pd.Series(out, index=dates, name="dT")
 

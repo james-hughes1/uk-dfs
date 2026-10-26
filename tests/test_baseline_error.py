@@ -146,3 +146,33 @@ def test_text_report_has_both_parts():
     text = text_report(acc, be.bias_regression(panel, n_boot=20, min_homes=3))
     assert "B1. Placebo accuracy" in text and "B2." in text
     assert "17:00–18:00  BL01" in text and "dT (per °C)" in text
+
+
+def test_claim_stats_match_meter_stats_and_floor_per_meter_vs_half_hour():
+    e = np.array([[[100.0, -100.0]], [[-50.0, -50.0]]])  # nets to 0 over the hour; −50 W
+    use = np.full_like(e, 500.0)
+    mask = np.ones((2, 1), bool)
+    s = dict(zip(be.CLAIM_STATS, be.claim_stats(be.day_sums(e, use, mask)), strict=True))
+    m = be.meter_stats(e, use, mask)
+    assert s["negative_pct"] == pytest.approx(m["negative_pct"]) == pytest.approx(50)
+    assert s["negative_hh_pct"] == pytest.approx(m["negative_hh_pct"]) == pytest.approx(75)
+    assert s["claim_pct"] == pytest.approx(m["bias_W"] / m["use_W"] * 100) == pytest.approx(-5)
+    assert s["floored_pct"] == pytest.approx(m["floored_pct"]) == pytest.approx(5)
+    assert s["floored_meter_pct"] == 0  # neither meter is positive over the hour
+    assert s["floor_adds_pct"] == pytest.approx(10)
+
+
+def test_day_sums_ignore_masked_cells_and_claim_summary_drops_empty_days():
+    rng = np.random.default_rng(8)
+    e = rng.normal(0, 100, (5, 40, 2))
+    use = np.full_like(e, 500.0)
+    mask = np.ones((5, 40), bool)
+    mask[:, :10] = False  # no usable meters on the first 10 days
+    e[~mask] = np.nan
+    sums = be.day_sums(e, use, mask)
+    assert not np.isnan(sums).any() and (sums[:10] == 0).all()
+    s = be.claim_summary(sums, n_boot=100)
+    assert s["meters"] == 150
+    assert s["claim_pct"] == pytest.approx(np.nanmean(e) / 5)
+    for k in be.CLAIM_STATS:
+        assert s[f"{k}_lo"] <= s[k] <= s[f"{k}_hi"]
