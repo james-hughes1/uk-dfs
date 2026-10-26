@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>DFS in Ten Images</title>
+  <meta name="description" content="Does the flexibility NESO pays for through the Demand Flexibility Service show up in the data? The study in ten images.">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="bar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span class="brand-text">The Demand Flexibility Service, in ten images</span>
+    </div>
+    <div class="controls">
+      <span class="counter" aria-live="polite"><span id="current">01</span> / <span id="total">10</span></span>
+      <button class="icon-btn" id="prev" aria-label="Previous image">&#8592;</button>
+      <button class="icon-btn" id="next" aria-label="Next image">&#8594;</button>
+      <button class="icon-btn" id="theme" aria-label="Toggle dark mode" title="Toggle dark mode">&#9680;</button>
+    </div>
+  </header>
+
+  <main id="track" class="track" tabindex="0" aria-label="Ten images, scroll sideways"></main>
+
+  <nav class="dots" id="dots" aria-label="Jump to image"></nav>
+
+  <noscript><p class="noscript">This page needs JavaScript to draw its charts.</p></noscript>
+
+  <!-- Chart library (pinned versions) -->
+  <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@observablehq/plot@0.6.16/dist/plot.umd.min.js"></script>
+  <!-- Study data, written by `uv run python -m uk_dfs.evaluation.<module>` -->
+  <script src="data/event_study.js"></script>
+  <script src="data/baseline_error.js"></script>
+  <script src="data/better_baselines.js"></script>
+  <script src="data/reality_check.js"></script>
+  <script src="data/opt_in.js"></script>
+  <script src="data/floor.js"></script>
+  <script src="data/dfs_conditions.js"></script>
+  <script src="data/overpayment.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
