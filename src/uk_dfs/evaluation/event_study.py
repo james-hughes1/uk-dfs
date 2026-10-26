@@ -461,9 +461,9 @@ def run(spec: Spec = MAIN, n_boot: int = 2000, seed: int = 0) -> Result:
 
 def main(fetch: bool = True) -> Result:
     """Fetch any missing data, run the analysis, print the tables and save the chart."""
-    from uk_dfs.config import FIGURES_DIR
     from uk_dfs.data import elexon, neso, weather
-    from uk_dfs.reporting.event_study import plot_event_study
+    from uk_dfs.reporting.event_study import plot_event_study, web_data
+    from uk_dfs.reporting.outputs import save
 
     if fetch:
         neso.fetch_dfs()
@@ -475,10 +475,7 @@ def main(fetch: bool = True) -> Result:
         print(result.summary, end="\n\n")
         print(result.regression, end="\n\n")
         print(result.robustness)
-    out = FIGURES_DIR / "event_study.png"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    plot_event_study(result).savefig(out)
-    print(f"\nChart: {out}")
+    save("event_study", plot_event_study(result), web_data(result))
     return result
 
 

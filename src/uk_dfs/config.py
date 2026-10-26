@@ -8,3 +8,4 @@ RAW_DIR = DATA_DIR / "raw"  # untouched downloads, never edited by hand
 INTERIM_DIR = DATA_DIR / "interim"  # cleaned/joined intermediate tables
 PROCESSED_DIR = DATA_DIR / "processed"  # final model-ready datasets
 FIGURES_DIR = PROJECT_ROOT / "reports" / "figures"
+WEB_DATA_DIR = PROJECT_ROOT / "web" / "data"  # chart data for the web app, one .js per analysis

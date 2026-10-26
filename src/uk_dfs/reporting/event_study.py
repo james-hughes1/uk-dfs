@@ -16,33 +16,49 @@ FAMILIES = {  # reference period -> what it assumes
 }
 
 
+def profiles(result: Result) -> dict:
+    """Per group, the average event-study profile over events of the most common length:
+    minutes from event start (centre of each 5-minute slot), mean and 95% CI (MW, event
+    day − matched days), the mean claim and the number of events."""
+    est = result.estimates
+    out = {}
+    for g in GROUPS:
+        t = est.table[est.table.group == g]
+        if t.empty:
+            continue
+        length = t.minutes.mode().iloc[0]
+        ids = t.index[t.minutes == length]
+        p = pd.concat([est.profiles[j] for j in ids], axis=1)
+        mu, se = p.mean(axis=1), p.std(axis=1) / np.sqrt(p.shape[1])
+        out[g] = {"minutes": mu.index + 2.5, "mean": mu, "lo": mu - 1.96 * se,
+                  "hi": mu + 1.96 * se, "claim": t.loc[ids, "claim"].mean(),
+                  "length": length, "events": len(ids)}  # fmt: skip
+    return out
+
+
 def plot_event_study(result: Result) -> plt.Figure:
     """Top: event-study profile per group (most common event length). Bottom left: real
     events vs placebos. Bottom right: alternative reference periods."""
-    est, spec = result.estimates, result.spec
-    groups = [g for g in GROUPS if (est.table.group == g).any()]
+    spec = result.spec
+    prof = profiles(result)
+    groups = list(prof)
     with style():
         fig = plt.figure(figsize=(14, 11))
         gs = fig.add_gridspec(2, 2, height_ratios=[1, 1.1])
 
         for i, g in enumerate(groups):
             ax = fig.add_subplot(gs[0, i])
-            t = est.table[est.table.group == g]
-            length = t.minutes.mode().iloc[0]
-            ids = t.index[t.minutes == length]
-            p = pd.concat([est.profiles[j] for j in ids], axis=1)
-            mu, se = p.mean(axis=1), p.std(axis=1) / np.sqrt(p.shape[1])
-            claim = t.loc[ids, "claim"].mean()
+            q = prof[g]
+            length, claim = q["length"], q["claim"]
             ax.axvspan(-spec.gap - spec.ref, -spec.gap, color=GRID, alpha=0.6, lw=0)
             ax.axvspan(0, length, color=AQUA, alpha=0.12, lw=0)
             ax.hlines(-claim, 0, length, color=AQUA, lw=2.5, label=f"Claimed: −{claim:.0f} MW")
-            x = mu.index + 2.5  # centre of each 5-minute interval
-            ax.fill_between(x, mu - 1.96 * se, mu + 1.96 * se, color=COLOURS[g], alpha=0.2, lw=0)
-            ax.plot(x, mu, color=COLOURS[g], marker="o", ms=3,
+            ax.fill_between(q["minutes"], q["lo"], q["hi"], color=COLOURS[g], alpha=0.2, lw=0)
+            ax.plot(q["minutes"], q["mean"], color=COLOURS[g], marker="o", ms=3,
                     label="Event day − matched days, 95% CI")  # fmt: skip
             ax.axhline(0, color=INK2, lw=0.8)
             ax.set_xlabel("Minutes from event start (grey: reference period)")
-            ax.set_title(f"{g}: {len(ids)} events lasting {length} min", fontsize=10)
+            ax.set_title(f"{g}: {q['events']} events lasting {length} min", fontsize=10)
             ax.legend(loc="lower left", fontsize=8)
         fig.axes[0].set_ylabel("Change from own reference period, MW\n(event day − matched days)")
 
@@ -110,3 +126,12 @@ def plot_event_study(result: Result) -> plt.Figure:
                      fontweight="bold")  # fmt: skip
         fig.tight_layout()
     return fig
+
+
+def web_data(result: Result) -> dict:
+    spec = result.spec
+    return {
+        "reference": {"start": -spec.gap - spec.ref, "end": -spec.gap},
+        "profiles": [{"group": g, **q} for g, q in profiles(result).items()],
+        "summary": result.summary,
+    }

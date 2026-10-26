@@ -107,6 +107,8 @@ def sweep(
 
 
 if __name__ == "__main__":
+    from uk_dfs.reporting.opt_in import plot_opt_in, web_data
+    from uk_dfs.reporting.outputs import save
     from uk_dfs.reporting.text import ci, table
 
     panel = Panel.load()
@@ -139,3 +141,4 @@ if __name__ == "__main__":
     })  # fmt: skip
     print("Sensitivity to the opt-in rate (BL01)\n")
     print(table(rows))
+    save("opt_in", plot_opt_in(out), web_data(out))

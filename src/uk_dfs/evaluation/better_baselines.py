@@ -191,7 +191,8 @@ def run(
 
 if __name__ == "__main__":
     from uk_dfs.data import weather
-    from uk_dfs.reporting.better_baselines import text_report
+    from uk_dfs.reporting.better_baselines import plot_better_baselines, text_report, web_data
+    from uk_dfs.reporting.outputs import save
 
     panel = be.Panel.load()
     sunset = weather.load_london_weather().sunset_h
@@ -201,3 +202,5 @@ if __name__ == "__main__":
     _, noisy, _ = run(panel, sunset, forecast_error_sd=1.5)
     print("\nSensitivity: temperature with day-ahead-style error (SD 1.5 °C)")
     print(text_report(noisy, None, c.window, None, header=False))
+    save("better_baselines", plot_better_baselines(scores, by_dT, c.window),
+         web_data(scores, by_dT, c.window))  # fmt: skip

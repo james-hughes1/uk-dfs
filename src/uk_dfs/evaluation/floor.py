@@ -54,6 +54,9 @@ SIZE_LABELS = ("Small", "Medium", "Large")
 DAYTIME = tuple(Window(s) for s in range(14, 44, 2))
 SAVINGS = (0, 10, 20, 30)
 GRID_RHOS = (0.0, 0.1, 0.2, 0.3, 0.5, 0.7)
+# The web app's interactive floor card: a finer grid, point estimates only matter
+SLIDER_SAVINGS = (0, 5, 10, 15, 20, 25, 30, 40, 50)
+SLIDER_RHOS = tuple(np.round(np.arange(0, 0.71, 0.1), 1))
 
 
 def home_size(use: np.ndarray, mask: np.ndarray) -> np.ndarray:
@@ -141,6 +144,8 @@ def grid(
 if __name__ == "__main__":
     from uk_dfs.data import lcl
     from uk_dfs.evaluation import reality_check as rc
+    from uk_dfs.reporting.floor import plot_floor, web_data
+    from uk_dfs.reporting.outputs import save
     from uk_dfs.reporting.text import ci, table
 
     def cols(df: pd.DataFrame) -> dict:
@@ -180,3 +185,5 @@ if __name__ == "__main__":
         "overclaim, points": [ci(r.overclaim_pct, r.overclaim_pct_lo, r.overclaim_pct_hi)
                               for r in g.itertuples()],
     })))  # fmt: skip
+    slider = grid(panel, savings=SLIDER_SAVINGS, rhos=SLIDER_RHOS, n_boot=20)
+    save("floor", plot_floor(s, c, g), web_data(s, c, slider))

@@ -225,6 +225,8 @@ def reference(panel: Panel, min_homes: int = 200) -> dict:
 
 if __name__ == "__main__":
     from uk_dfs.data import neso, weather
+    from uk_dfs.reporting.dfs_conditions import plot_dfs_conditions, web_data
+    from uk_dfs.reporting.outputs import save
     from uk_dfs.reporting.text import ci, table
 
     temp = weather.daily_temperature(weather.load_weather())
@@ -234,9 +236,11 @@ if __name__ == "__main__":
 
     panel = Panel.load()
     ref = reference(panel)
+    results = {}
     for name, levels in (("Timing only (event windows, all LCL days)", TIMING_ONLY),
                          ("Timing + conditions (post-stratified)", LEVELS)):  # fmt: skip
         out, per_event = transfer(panel, ev, levels)
+        results["timing only" if levels == TIMING_ONLY else "timing + conditions"] = out
         print(f"{name}: Std placebo, true saving zero; % of use, bootstrap over LCL days")
         if out.attrs["dropped_no_temp"]:
             print(f"    {out.attrs['dropped_no_temp']} events dropped: no temperature data")
@@ -257,3 +261,4 @@ if __name__ == "__main__":
     print("Reference, every LCL day 17:00–18:00: " + "; ".join(
         f"{v} claim {r['claim_pct']:+.1f}%, floored {r['floored_pct']:+.1f}%"
         for v, r in ref.items()))  # fmt: skip
+    save("dfs_conditions", plot_dfs_conditions(ev, results, ref), web_data(ev, results, ref))

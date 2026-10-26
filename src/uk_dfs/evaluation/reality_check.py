@@ -129,6 +129,8 @@ def summarise(t: pd.DataFrame, n_boot: int = 2000, seed: int = 0) -> pd.DataFram
 
 if __name__ == "__main__":
     from uk_dfs.data import lcl
+    from uk_dfs.reporting.outputs import save
+    from uk_dfs.reporting.reality_check import plot_reality_check, web_data
     from uk_dfs.reporting.text import ci, table
 
     panel = Panel.load()
@@ -139,3 +141,4 @@ if __name__ == "__main__":
     print(f"Reality check: first hour of {s.attrs['events']} High-price events, 2013")
     print("    ToU vs randomised Std control; bootstrap over events\n")
     print(table(rows))
+    save("reality_check", plot_reality_check(s), web_data(s))

@@ -388,8 +388,52 @@ def bias_regression(
     return table
 
 
+# --- Chart data ---------------------------------------------------------------------------
+
+
+def placebo_days(panel: Panel, window: Window = MAIN, min_homes: int = 200) -> pd.DataFrame:
+    """One row per day: the Std portfolio's claim (% of use, W per home) under each BL01
+    variant, with the day's conditions."""
+    out = []
+    for variant in VARIANTS:
+        e, use, ok = delivery(panel, window, adjusted=variant != VARIANTS[0])
+        daily = portfolio_daily(e, use, panel.control[:, None] & ok, panel.dates, min_homes)
+        out.append(daily[["pct", "claimed_W"]].add_prefix(f"{variant}: "))
+    return pd.concat(out, axis=1).join(panel.days).dropna(subset=["dT"])
+
+
+def meter_errors(panel: Panel, window: Window = MAIN) -> np.ndarray:
+    """Claimed delivery per Std home-day over the window (W), plain BL01."""
+    e, _, ok = delivery(panel, window)
+    return e[panel.control[:, None] & ok].mean(-1)
+
+
+def example_home_days(panel: Panel, window: Window = MAIN, n: int = 3, seed: int = 4) -> list[dict]:
+    """`n` random Std home-days with a full day of data: actual use and BL01 (unadjusted
+    and with the in-day adjustment) per half-hour (W), and the claim over the window."""
+    _, _, ok = delivery(panel, window, adjusted=True)
+    ok &= panel.control[:, None] & ~np.isnan(panel.X).any(-1)
+    h, d = np.nonzero(ok)
+    pick = np.random.default_rng(seed).choice(len(h), n, replace=False)
+    adj = bl01.in_day_adjustment(panel.X, panel.B, window.start)
+    out = []
+    for i in pick:
+        x, b = panel.X[h[i], d[i]] * KW, panel.B[h[i], d[i]] * KW
+        a = b + adj[h[i], d[i]] * KW
+        w = window.slots
+        out.append({"date": panel.dates[d[i]], "actual": x, "baseline": b, "adjusted": a,
+                    "claim_W": (b[w] - x[w]).mean(),
+                    "claim_adj_W": (a[w] - x[w]).mean()})  # fmt: skip
+    return out
+
+
 if __name__ == "__main__":
-    from uk_dfs.reporting.baseline_error import text_report
+    from uk_dfs.reporting.baseline_error import plot_baseline_error, text_report, web_data
+    from uk_dfs.reporting.outputs import save
 
     panel = Panel.load()
-    print(text_report(accuracy(panel, DFS_WINDOWS), bias_regression(panel)))
+    acc, reg = accuracy(panel, DFS_WINDOWS), bias_regression(panel)
+    print(text_report(acc, reg))
+    meters, days = meter_errors(panel), placebo_days(panel)
+    save("baseline_error", plot_baseline_error(meters, days, reg),
+         web_data(meters, days, acc, example_home_days(panel)))  # fmt: skip
