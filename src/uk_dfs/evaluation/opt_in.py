@@ -16,6 +16,12 @@ foresight. Each home then opts in on the `share` of days with the highest signal
 score claimed delivery over the opted-in home-days only, with and without the per-meter
 floor, as % of opted-in use.
 
+The share sets the headroom for selection: a home that joins most events runs out of
+evenings it would have been out anyway. With normal z the lift on chosen days is
+ρ·φ(Φ⁻¹(1 − share)) / share standard deviations: 0.80ρ at 50%, 0.35ρ at 80%. The default,
+80%, follows NESO's 2022/23 smart-meter evaluation (about 83% of eligible consumers opted
+into each event, Table 6); other shares are reported as sensitivities.
+
 ρ is unknown for real DFS homes, so results are a curve over ρ (calibrating it is further
 work). One noise draw is shared across ρ (common random numbers), so the curve is smooth;
 intervals are a moving-block bootstrap over days for that draw. NESO's own choice of event
@@ -47,6 +53,8 @@ from uk_dfs.evaluation.baseline_error import (
 )
 
 RHOS = tuple(np.round(np.linspace(0, 1, 11), 1))
+SHARE = 0.8  # share of event days a home opts into (NESO 2022/23: about 83% per event)
+SENSITIVITY_SHARES = (0.25, 0.5, 0.8, 0.95)
 
 
 def placebo_mask(panel: Panel, ok: np.ndarray) -> np.ndarray:
@@ -65,7 +73,7 @@ def standardise(score: np.ndarray, mask: np.ndarray) -> np.ndarray:
 
 
 def choose(
-    score: np.ndarray, mask: np.ndarray, rho: float, noise: np.ndarray, share: float = 0.5
+    score: np.ndarray, mask: np.ndarray, rho: float, noise: np.ndarray, share: float = SHARE
 ) -> np.ndarray:
     """(H, D) opt-in: each home joins on the `share` of its days in `mask` with the highest
     signal ρ·z + √(1 − ρ²)·noise, z being `score` standardised per home. A higher score
@@ -83,7 +91,7 @@ def sweep(
     panel: Panel,
     window: Window = MAIN,
     rhos: Sequence[float] = RHOS,
-    share: float = 0.5,
+    share: float = SHARE,
     variants: Sequence[str] = VARIANTS,
     n_boot: int = 1000,
     block: int = 7,
@@ -125,12 +133,12 @@ if __name__ == "__main__":
                                        for r in g.itertuples()],
         })  # fmt: skip
         print(f"B5. Household opt-in ({variant}): Std placebo, working days, "
-              f"{g.window.iloc[0]}, opt in on half of days")  # fmt: skip
+              f"{g.window.iloc[0]}, opt in on {g.share.iloc[0]:.0%} of days")  # fmt: skip
         print(f"    {g.meters.iloc[0]:,} opted-in home-days per row; block bootstrap over days\n")
         print(table(rows), "\n")
 
     sens = pd.concat([sweep(panel, rhos=(0.0, 0.3), share=s, variants=VARIANTS[:1])
-                      for s in (0.25, 0.5, 0.75)])  # fmt: skip
+                      for s in SENSITIVITY_SHARES])  # fmt: skip
     rows = pd.DataFrame({
         "share of days": sens.share.map("{:.0%}".format),
         "ρ": sens.rho.map("{:.1f}".format),

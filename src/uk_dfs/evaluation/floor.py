@@ -17,7 +17,7 @@ adjustment was removed):
 2. **A real response.** Time-of-use homes in High events: `reality_check` already reports
    their share negative and what the floor adds, against the Std control.
 3. **Opt-in × saving grid.** Add a true saving of r% of each home's use, let homes opt in
-   on half of days with foresight ρ (`opt_in`), and read off the share negative, the
+   on 80% of days (`opt_in.SHARE`) with foresight ρ, and read off the share negative, the
    floored claim and the overclaim (floored claim − true saving). A published DFS share
    of negative meters would then convert into a floor effect via this grid.
 
@@ -57,6 +57,7 @@ GRID_RHOS = (0.0, 0.1, 0.2, 0.3, 0.5, 0.7)
 # The web app's interactive floor card: a finer grid, point estimates only matter
 SLIDER_SAVINGS = (0, 5, 10, 15, 20, 25, 30, 40, 50)
 SLIDER_RHOS = tuple(np.round(np.arange(0, 0.71, 0.1), 1))
+SLIDER_SHARES = (0.5, 0.8, 0.95)
 
 
 def home_size(use: np.ndarray, mask: np.ndarray) -> np.ndarray:
@@ -117,7 +118,7 @@ def grid(
     window: Window = MAIN,
     savings: Sequence[float] = SAVINGS,
     rhos: Sequence[float] = GRID_RHOS,
-    share: float = 0.5,
+    share: float = opt_in.SHARE,
     n_boot: int = 1000,
     block: int = 7,
     seed: int = 0,
@@ -177,7 +178,8 @@ if __name__ == "__main__":
                               [ci(*t.loc[q], signed=False) for q in keep]})), "\n")  # fmt: skip
 
     g = grid(panel)
-    print("Opt-in × true saving: Std placebo, working days, opt in on half of days\n")
+    print(f"Opt-in × true saving: Std placebo, working days, opt in on {opt_in.SHARE:.0%} "
+          "of days\n")  # fmt: skip
     print(table(pd.DataFrame({
         "saving %": g.saving_pct.map("{:.0f}".format),
         "ρ": g.rho.map("{:.1f}".format),
@@ -185,5 +187,6 @@ if __name__ == "__main__":
         "overclaim, points": [ci(r.overclaim_pct, r.overclaim_pct_lo, r.overclaim_pct_hi)
                               for r in g.itertuples()],
     })))  # fmt: skip
-    slider = grid(panel, savings=SLIDER_SAVINGS, rhos=SLIDER_RHOS, n_boot=20)
+    slider = pd.concat([grid(panel, savings=SLIDER_SAVINGS, rhos=SLIDER_RHOS, share=q,
+                             n_boot=10).assign(share=q) for q in SLIDER_SHARES])  # fmt: skip
     save("floor", plot_floor(s, c, g), web_data(s, c, slider))

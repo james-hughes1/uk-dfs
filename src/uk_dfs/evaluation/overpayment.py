@@ -2,18 +2,25 @@
 
 Scenarios, not an estimate: the true saving of DFS participants is unknown. Each scenario
 fixes a true saving (% of each home's use) and opt-in foresight ρ, and reads the settled
-claim off the settlement-floor grid (`floor.grid`: LCL placebo homes, working days, half
-of days opted in, the saving added to every home, negatives floored per meter per
-half-hour as the rules require for manual opt-in meters). Then:
+claim off the settlement-floor grid (`floor.grid`: LCL placebo homes, working days, homes
+opting into 80% of event days as NESO observed in 2022/23, the saving added to every home,
+negatives floored per meter per half-hour as the rules require for manual opt-in meters).
+Then:
 
     real share r = true saving ÷ floored claim
     overpayment  = (1 − r) × settled cost
 
-The floored claim splits, in this order, into the true saving, baseline error (plain claim
-− saving at ρ = 0), the floor (floored − plain claim at ρ = 0) and opt-in selection (the
-rest). Settled cost is NESO's published settled cost per turn-down half-hour, which
-already carries pay-as-bid prices and the volume cap; the question is what NESO would have
-paid had it settled the true saving at the same prices.
+The floored claim splits into the true saving, baseline error (plain claim − saving at
+ρ = 0), the floor and opt-in selection. The last two interact: foresight raises the plain
+claim but leaves fewer meters negative, so the floor adds less. Their split is therefore
+order-free (Shapley, the average over both orders):
+
+    floor     = ½ [(floored − plain at ρ = 0) + (floored − plain at ρ)]
+    selection = ½ [(floored at ρ − floored at 0) + (plain at ρ − plain at 0)]
+
+and the four parts still sum to the floored claim. Settled cost is NESO's published settled
+cost per turn-down half-hour, which already carries pay-as-bid prices and the volume cap;
+the question is what NESO would have paid had it settled the true saving at the same prices.
 
 Intervals on r come from the grid's block bootstrap over LCL days and are narrow; the real
 uncertainty is which scenario applies. Since November 2024 delivery below 50% of the
@@ -71,7 +78,8 @@ def settled_spend(summary: pd.DataFrame, periods: dict = PERIODS) -> pd.DataFram
 
 def decompose(grid: pd.DataFrame, scenarios: dict = SCENARIOS) -> pd.DataFrame:
     """One row per scenario: real share of the floored claim (with interval), the
-    inflation factor, and each part's share of the floored claim (`PARTS`)."""
+    inflation factor, and each part's share of the floored claim (`PARTS`; floor and
+    selection split order-free, see the module docstring)."""
     g = grid.set_index(["saving_pct", "rho"])
     rows = []
     for name, (saving, rho, label) in scenarios.items():
@@ -86,8 +94,8 @@ def decompose(grid: pd.DataFrame, scenarios: dict = SCENARIOS) -> pd.DataFrame:
             "inflation": total / saving,
             "true": saving / total,
             "baseline": (r0.claim_pct - saving) / total,
-            "floor": (r0.floored_pct - r0.claim_pct) / total,
-            "selection": (total - r0.floored_pct) / total,
+            "floor": ((r0.floored_pct - r0.claim_pct) + (total - r.claim_pct)) / 2 / total,
+            "selection": ((total - r0.floored_pct) + (r.claim_pct - r0.claim_pct)) / 2 / total,
         })  # fmt: skip
     return pd.DataFrame(rows).set_index("scenario")
 
@@ -108,8 +116,15 @@ if __name__ == "__main__":
 
     spend = settled_spend(neso.load_dfs())
     savings, rhos = grid_points()
-    g = floor.grid(Panel.load(), savings=savings, rhos=rhos)
-    dec = decompose(g)
+    panel = Panel.load()
+    dec = decompose(floor.grid(panel, savings=savings, rhos=rhos))
     over = overpayment(dec, spend)
     print(text_report(spend, dec, over))
+    print("\nSensitivity: opt-in share (main: 80% of event days)")
+    for q in (0.5, 0.95):
+        d = decompose(floor.grid(panel, savings=savings, rhos=rhos, share=q, n_boot=100))
+        total = overpayment(d, spend)["Total"] / 1e6
+        print(f"  {q:.0%}: " + "; ".join(
+            f"{k} real share {r.real_share:.2f}, selection {r.selection * 100:.0f}/100, "
+            f"£{total[k]:.1f}m" for k, r in d.iterrows()))  # fmt: skip
     save("overpayment", plot_overpayment(spend, dec, over), web_data(spend, dec, over))

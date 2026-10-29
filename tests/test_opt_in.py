@@ -15,7 +15,7 @@ def test_perfect_foresight_picks_each_homes_quietest_days():
     score = rng.normal(0, 1, (3, 20))
     mask = np.ones_like(score, bool)
     mask[0, :4] = False
-    pick = opt_in.choose(score, mask, rho=1.0, noise=rng.standard_normal(score.shape))
+    pick = opt_in.choose(score, mask, rho=1.0, noise=rng.standard_normal(score.shape), share=0.5)
     assert not pick[~mask].any()
     for h in range(3):
         s = np.where(mask[h], score[h], -np.inf)
@@ -48,7 +48,7 @@ def noisy_panel(homes=60, sd=0.3, seed=2):
 
 
 def test_sweep_claim_is_zero_at_random_opt_in_and_rises_with_foresight():
-    out = opt_in.sweep(noisy_panel(), rhos=(0.0, 0.5, 1.0), n_boot=100)
+    out = opt_in.sweep(noisy_panel(), rhos=(0.0, 0.5, 1.0), share=0.5, n_boot=100)
     assert list(out.variant.unique()) == list(be.VARIANTS)
     plain = out[out.variant == be.VARIANTS[0]].set_index("rho")
     assert plain.claim_pct_lo[0.0] < 0 < plain.claim_pct_hi[0.0]  # pure noise: no bias
@@ -58,3 +58,11 @@ def test_sweep_claim_is_zero_at_random_opt_in_and_rises_with_foresight():
     assert (plain.floor_adds_pct > 0).all()
     assert plain.negative_hh_pct[0.0] > plain.negative_hh_pct[1.0]
     assert plain.floor_adds_pct[0.0] > plain.floor_adds_pct[1.0]
+
+
+def test_joining_more_events_leaves_less_room_to_pick():
+    """Headroom: with perfect foresight, opting into most days dilutes the selection gain."""
+    panel = noisy_panel()
+    claim = {q: opt_in.sweep(panel, rhos=(1.0,), share=q, variants=be.VARIANTS[:1],
+                             n_boot=20).claim_pct.iloc[0] for q in (0.5, 0.95)}  # fmt: skip
+    assert claim[0.5] > 2 * claim[0.95] > 0

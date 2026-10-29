@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from uk_dfs.evaluation import opt_in
 from uk_dfs.reporting.style import BLUE, BLUE_RAMP, INK2, ORANGE, style
 
 SERIES = {"floored_pct": ("Floored per half-hour (current rules)", ORANGE),
@@ -68,9 +69,13 @@ def plot_floor(by_start: pd.DataFrame, by_cond: pd.DataFrame, grid: pd.DataFrame
 
 
 def web_data(by_start: pd.DataFrame, by_cond: pd.DataFrame, slider: pd.DataFrame) -> dict:
+    """`slider`: `floor.grid` rows, optionally stacked over opt-in shares (a `share` column;
+    the default share if absent)."""
     keep = ["negative_hh_pct", "claim_pct", "floored_pct"]
+    if "share" not in slider:
+        slider = slider.assign(share=opt_in.SHARE)
     return {
         "by_start": by_start[["window", *keep, "floored_pct_lo", "floored_pct_hi"]],
         "by_condition": by_cond[["group", "condition", *keep]],
-        "grid": slider[["saving_pct", "rho", *keep]],
+        "grid": slider[["share", "saving_pct", "rho", *keep]],
     }
