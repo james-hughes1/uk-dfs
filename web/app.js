@@ -112,9 +112,10 @@
         el("div", { class: "hero", text: money(total.cost) }),
         el("p", { class: "hero-sub", text: `settled by NESO for demand turn-down through the Demand Flexibility Service, winter 2022/23 to today` }),
         tiles(spend.map((r) => [r.period, money(r.cost), `${num(count(r.period))} events · £${num(r.price)}/MWh settled`])),
-        legend(periods.map((p, i) => [p, [colours().r1, colours().r2, colours().r3][i]])),
+        legend([...periods.map((p, i) => [`${p}: MWh delivered`, [colours().r1, colours().r2, colours().r3][i], true]),
+          ["Not yet settled: MWh procured", colours().axis, true], ["Accepted price, £/MWh (right axis)", colours().s2]]),
         viz,
-        el("p", { class: "caption", text: "Each bubble is one turn-down event: its height is the average price of the accepted bids, its area the energy procured; hollow bubbles are test events. The launch and second winters were mostly tests at the £3,000/MWh guaranteed price. In the market phase, since November 2024, NESO calls DFS only when it beats the alternatives, so events are many, small and cheap. The boxes show what NESO settled after delivery." }),
+        el("p", { class: "caption", text: "Each thin bar is one turn-down event, as tall as the energy NESO settled as delivered; the line is the average price of the accepted bids. The launch and second winters were mostly tests at the £3,000/MWh guaranteed price. In the market phase, since November 2024, NESO calls DFS only when it beats the alternatives, so events are many, small and cheap. Events since August 2026 aren't settled yet, so their bars show the volume procured." }),
         el("p", { class: "caption" }, "Nobody can see a saving directly. Every payment rests on a ",
           el("strong", { text: "baseline" }), ": an estimate of what each home would have used. This study asks whether that estimate, and the rules around it, pay for flexibility that really happened. Swipe to see what we found."),
       );
@@ -128,24 +129,35 @@
         const [t0, t1] = d3.extent(events, (e) => e.date);
         const narrow = viz.clientWidth < 560;  // phones: short period labels so they don't collide
         const short = (p) => ({ Launch: "Launch", Second: "2nd", Market: "Market" })[p.split(" ")[0]] ?? p;
+        const mwh = (e) => e.settled_mwh ?? e.procured_mwh;  // bar height: delivered, or procured until settled
+        // Two y axes on one scale: MWh on the left; price scaled onto it, axis on the right
+        const top = d3.max(events, mwh) * 1.08, PMAX = 5500;
+        const toY = (p) => (top * p) / PMAX;
+        const fromY = (y) => (y * PMAX) / top;
+        const mwhText = (v) => num(v, v < 10 ? 1 : 0);
         plot(viz, {
-          height: 320, marginLeft: 56,
+          height: 340, marginLeft: 48, marginRight: 52,
           x: { label: null, type: "utc", domain: [new Date(+t0 - 40 * DAY), new Date(+t1 + 40 * DAY)] },
-          y: { label: "Accepted price, £/MWh (log scale)", type: "log", domain: [50, 6000], grid: true,
-            ticks: [50, 100, 200, 500, 1000, 2000, 5000], tickFormat: (v) => `£${num(v)}` },
-          r: { domain: [0, d3.max(events, (e) => e.procured_mwh)], range: [1.5, 16] },
+          y: { domain: [0, top] },
           marks: [
             Plot.rectX(bands, { x1: "x1", x2: "x2", fill: c.ink2, fillOpacity: 0.06 }),
-            Plot.text(bands, { x: "x1", text: (b) => (narrow ? short(b.period) : b.period), frameAnchor: "bottom",
-              dy: -6, dx: 4, textAnchor: "start", fill: c.ink2, fontWeight: 600 }),
-            Plot.ruleY([3000], { stroke: c.axis, strokeDasharray: "4,3" }),
-            Plot.text([3000], { y: (v) => v, frameAnchor: "right", text: () => "£3,000 guaranteed price", dy: -8, textAnchor: "end", fill: c.ink2 }),
-            Plot.dot(events, { x: "date", y: "price", r: "procured_mwh",
-              fill: (e) => (e.test ? "none" : ramp[e.period]), fillOpacity: 0.6,
-              stroke: (e) => ramp[e.period], strokeWidth: (e) => (e.test ? 1.5 : 0.75) }),
-            Plot.tip(events, Plot.pointer({ x: "date", y: "price", ...tipStyle(),
+            Plot.text(bands, { x: "x1", text: (b) => (narrow ? short(b.period) : b.period), frameAnchor: "top",
+              dy: 8, dx: 4, textAnchor: "start", fill: c.ink2, fontWeight: 600 }),
+            Plot.gridY({ stroke: c.grid, strokeOpacity: 1 }),
+            Plot.axisY({ anchor: "left", label: "MWh delivered", tickFormat: (v) => num(v) }),
+            Plot.axisY([0, 1000, 2000, 3000, 4000, 5000].map(toY), { anchor: "right", label: "Accepted £/MWh",
+              tickFormat: (v) => `£${num(fromY(v))}` }),
+            Plot.ruleX(events, { x: "date", y1: 0, y2: mwh, strokeWidth: narrow ? 1 : 1.5,
+              stroke: (e) => (e.settled_mwh == null ? c.axis : ramp[e.period]) }),
+            Plot.ruleY([0], { stroke: c.axis }),
+            Plot.ruleY([toY(3000)], { stroke: c.s2, strokeOpacity: 0.5, strokeDasharray: "4,3" }),
+            Plot.text([toY(3000)], { y: (v) => v, frameAnchor: "right", text: () => (narrow ? "£3,000 guaranteed" : "£3,000 guaranteed price"), dy: narrow ? 12 : -8, dx: -4, textAnchor: "end", fill: c.ink2 }),
+            Plot.line(events, { x: "date", y: (e) => toY(e.price), z: "period", stroke: c.s2, strokeWidth: 1.5 }),
+            Plot.ruleX(events, Plot.pointerX({ x: "date", stroke: c.ink2, strokeOpacity: 0.5 })),
+            Plot.tip(events, Plot.pointerX({ x: "date", y: mwh, ...tipStyle(),
               title: (e) => `${d3.utcFormat("%-d %b %Y, %H:%M")(e.date)} · ${e.test ? "test" : "live"} event\n` +
-                `${num(e.procured_mwh, e.procured_mwh < 10 ? 1 : 0)} MWh procured\n£${num(e.price)}/MWh · £${num(e.cost)} accepted` })),
+                (e.settled_mwh == null ? `Not settled yet · ${mwhText(e.procured_mwh)} MWh procured` : `${mwhText(e.settled_mwh)} MWh delivered (${mwhText(e.procured_mwh)} procured)`) +
+                `\n£${num(e.price)}/MWh accepted · £${num(e.cost)} in total` })),
           ],
         });
       };

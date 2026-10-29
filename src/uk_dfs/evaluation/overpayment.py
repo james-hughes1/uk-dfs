@@ -87,13 +87,15 @@ def settled_spend(summary: pd.DataFrame, periods: dict = PERIODS) -> pd.DataFram
 
 def event_prices(summary: pd.DataFrame, periods: dict = PERIODS) -> pd.DataFrame:
     """One row per turn-down event (`features.events.turn_down`): start, period, test,
-    procured MWh, accepted bid cost (£) and the average accepted price (£/MWh). Accepted
-    rather than settled, so events NESO hasn't settled yet still have a size and price."""
+    procured MWh, settled (delivered) MWh, accepted bid cost (£) and the average accepted
+    price (£/MWh). Settled MWh is missing for events NESO hasn't settled yet; the price is
+    from accepted bids, so those events still have one."""
     dn = turn_down(summary)
     out = dn.groupby("event").agg(
         start=("start", "first"),
         test=("type", lambda t: (t == "Test").any()),
         procured_mwh=("proc", lambda mw: mw.sum() / 2),
+        settled_mwh=("settled", lambda mw: mw.sum(min_count=1) / 2),
         cost=("cost", "sum"),
     )
     out.insert(1, "period", period_of(out.start, periods))

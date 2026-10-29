@@ -78,12 +78,15 @@ def test_event_prices_groups_runs_and_prices_accepted_bids():
         "type": ["Test", "Test", "Live", "Live", "Live"],
         "proc": [100.0, 50.0, 40.0, 20.0, 30.0],
         "cost": [150_000.0, 75_000.0, 1_000.0, 600.0, 9.0],
+        "settled": [90.0, 40.0, np.nan, 20.0, 30.0],
     })  # fmt: skip
     ev = op.event_prices(summary)
     assert list(ev.period) == [LAUNCH, MARKET, MARKET]  # 18:00 not contiguous
     assert list(ev.test) == [True, False, False]
     assert list(ev.procured_mwh) == [75, 20, 10]  # MW over half-hours; turn-up excluded
     assert list(ev.price) == pytest.approx([3000, 50, 60])
+    assert ev.settled_mwh.iloc[0] == 65
+    assert np.isnan(ev.settled_mwh.iloc[1])  # not settled yet
 
 
 def test_overpayment_is_unreal_share_times_cost():
