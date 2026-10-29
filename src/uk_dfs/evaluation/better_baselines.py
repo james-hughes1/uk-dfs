@@ -165,12 +165,19 @@ def score(
     return out
 
 
+def daily_claims(c: Comparison, min_homes: int = 200) -> pd.DataFrame:
+    """One row per test day: its temperature change vs the BL01 baseline days (`dT`) and
+    the portfolio claim (% of usage) under each method."""
+    pct = pd.DataFrame({m: daily_pct(c.test, m, min_homes) for m in c.methods}).dropna()
+    pct.insert(0, "dT", c.test.groupby("date").dT.first().reindex(pct.index))
+    return pct
+
+
 def bias_by_temperature_change(c: Comparison, min_homes: int = 200) -> pd.DataFrame:
     """Mean portfolio claim (% of usage) per temperature-change band, per method."""
-    pct = pd.DataFrame({m: daily_pct(c.test, m, min_homes) for m in c.methods}).dropna()
-    dT = c.test.groupby("date").dT.first().reindex(pct.index)
-    band = pd.cut(dT, DT_BINS, labels=DT_LABELS)
-    out = pct.groupby(band, observed=False).mean()
+    days = daily_claims(c, min_homes)
+    band = pd.cut(days.pop("dT"), DT_BINS, labels=DT_LABELS)
+    out = days.groupby(band, observed=False).mean()
     out.insert(0, "days", band.value_counts().reindex(out.index))
     return out
 
@@ -203,4 +210,4 @@ if __name__ == "__main__":
     print("\nSensitivity: temperature with day-ahead-style error (SD 1.5 °C)")
     print(text_report(noisy, None, c.window, None, header=False))
     save("better_baselines", plot_better_baselines(scores, by_dT, c.window),
-         web_data(scores, by_dT, c.window))  # fmt: skip
+         web_data(scores, by_dT, c.window, daily_claims(c)))  # fmt: skip

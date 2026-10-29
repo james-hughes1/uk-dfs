@@ -113,3 +113,19 @@ def test_text_report_renders():
     by_dT = bb.bias_by_temperature_change(c, min_homes=20)
     text = text_report(scores, by_dT, c.window, "-2.0% per °C")
     assert "B3. Better baselines" in text and "Gradient boosting" in text and "< −4" in text
+
+
+def test_daily_claims_feed_the_bands_and_the_web_data():
+    from uk_dfs.reporting.better_baselines import web_data
+    from uk_dfs.reporting.outputs import plain
+
+    panel, sunset = weather_driven_panel(homes=25)
+    c = bb.compare(bb.home_days(panel, sunset))
+    days = bb.daily_claims(c, min_homes=20)
+    assert list(days.columns) == ["dT", *c.methods] and days.index.min() >= bb.TRAIN_END
+    cold = days[days.dT < -4]
+    by_dT = bb.bias_by_temperature_change(c, min_homes=20)
+    assert by_dT.loc["< −4", "BL01"] == pytest.approx(cold.BL01.mean())
+    data = plain(web_data(bb.score(c, n_boot=20, min_homes=20), by_dT, c.window, days))
+    assert len(data["days"]) == len(days) and data["days"][0]["date"] == f"{days.index[0]:%Y-%m-%d}"
+    assert data["fits"]["BL01"]["slope"] > 0  # warmer days look like savings

@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 
 from uk_dfs.evaluation.baseline_error import Window
+from uk_dfs.reporting.baseline_error import fit_line
 from uk_dfs.reporting.style import CATEGORICAL, INK2, style
 from uk_dfs.reporting.text import ci, table
 
@@ -130,10 +131,17 @@ def plot_better_baselines(scores: pd.DataFrame, by_dT: pd.DataFrame, window: Win
     return fig
 
 
-def web_data(scores: pd.DataFrame, by_dT: pd.DataFrame, window: Window) -> dict:
+def web_data(scores: pd.DataFrame, by_dT: pd.DataFrame, window: Window,
+             days: pd.DataFrame) -> dict:  # fmt: skip
+    """`days` is `daily_claims()`: one row per test day, with a straight-line fit per method."""
     return {
         "window": window.label,
         "methods": list(scores.index),
         "scores": scores.reset_index(),
         "by_dT": by_dT.rename_axis("band").reset_index().astype({"band": str}),
+        "days": days.assign(date=days.index.strftime("%Y-%m-%d")).reset_index(drop=True),
+        "fits": {
+            m: dict(zip(("slope", "intercept"), fit_line(days.dT, days[m]), strict=True))
+            for m in scores.index
+        },  # fmt: skip
     }

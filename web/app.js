@@ -299,37 +299,52 @@
     },
   });
 
-  // 5. Weather bias
+  // 5. Weather bias, and baselines that fix it (interactive)
   cards.push({
-    kicker: "When is it biased?", source: "baseline_error.py · dfs_conditions.py", needs: ["baseline_error"],
-    title: "Days warmer than the baseline days look like savings; cold snaps look like failure",
+    kicker: "When is it biased? · try it", source: "better_baselines.py · dfs_conditions.py", needs: ["better_baselines"],
+    title: "Warm days look like savings and cold snaps like failure. A baseline that knows the weather fixes most of it",
     mount(body) {
-      const d = S.baseline_error;
-      let v = "bl01";
-      const viz = el("div", { class: "viz" });
+      const d = S.better_baselines;
+      const sc = Object.fromEntries(d.scores.map((r) => [r.method, r]));
+      const SHORT = { "BL01": "Current rules", "BL01 + in-day adj": "In-day adj.", "BL01 × temperature": "× temperature", "Gradient boosting": "Boosting" };
+      const ABOUT = {
+        "BL01": "BL01 as settled today: the average of the home's recent similar days.",
+        "BL01 + in-day adj": "The 2022/23 rules shifted BL01 by the home's own use in the hours before the event. That tracks the weather, but households can game it, so it was dropped.",
+        "BL01 × temperature": "BL01 scaled by one learned factor per °C the day is warmer or colder than its baseline days.",
+        "Gradient boosting": "A model of each home's use from weather, sunset and calendar: nothing a household can influence on the day.",
+      };
+      let m = d.methods[0];
+      const viz = el("div", { class: "viz" }), out = el("div"), about = el("p", { class: "caption" });
       const dc = S.dfs_conditions;
       const inForce = dc ? dc.results.filter((r) => r.setting === "timing + conditions" && r.in_force) : [];
       const cond = inForce.map((r) => `${r.group.split(":")[0]} ${signed(r.claim_pct, 1)}%`).join(", ");
+      const band = (b, k) => row(d.by_dT, "band", b)[k];
+      const xs = d3.extent(d.days, (r) => r.dT);
       body.append(
-        el("div", { class: "toolbar" }, seg([["bl01", "Current rules"], ["ida", "2022/23 in-day adjustment"]], v, (x) => { v = x; draw(); }, "Baseline rule")),
-        viz,
-        el("p", { class: "caption", text: `Each dot is one day for the whole portfolio. BL01 errs by about 2 points of usage per °C that the day differs from its baseline days. The 2022/23 in-day adjustment removed most of this but invited gaming, so it was dropped. Re-weighted to the real mix of DFS events, the bias nets out${cond ? ` (${cond})` : ""}: events weren't mostly cold snaps.` }),
-        dataTable(["Rule", "Slope, points per °C", "Intercept"],
-          Object.entries(d.fits).map(([k, f]) => [k, num(f.slope, 2), num(f.intercept, 2)])),
+        el("div", { class: "toolbar" }, seg(d.methods.map((x) => [x, SHORT[x] ?? x]), m, (x) => { m = x; draw(); }, "Baseline")),
+        out, viz, about,
+        el("p", { class: "caption", text: `Each dot is one day for the whole portfolio of flat-tariff homes, which were never asked to respond, so the true saving is zero and every claim is error. The models were trained on March 2012 – February 2013 and every dot is from the following year, March 2013 – February 2014, which they never saw. Re-weighted to the real mix of DFS events, BL01's bias nets out${cond ? ` (${cond})` : ""}: events weren't mostly cold snaps. No baseline fixes per-meter noise, so the floor (two cards on) is untouched.` }),
+        dataTable(["Baseline", "Daily error (MAE), %", "Slope, pts per °C", "Days < −4 °C, %", "Days > 4 °C, %"],
+          d.methods.map((x) => [x, num(sc[x].portfolio_mae_pct, 1), signed(d.fits[x].slope, 1), signed(band("< −4", x), 1), signed(band("> 4", x), 1)])),
       );
       function draw() {
         const c = colours();
-        const fit = d.fits[v === "bl01" ? "BL01" : "+ in-day adj"];
-        const xs = d3.extent(d.days, (r) => r.dT);
+        const fit = d.fits[m];
+        out.replaceChildren(tiles([
+          ["Daily error (MAE)", `${num(sc[m].portfolio_mae_pct, 1)}%`, m === "BL01" ? "of use, the benchmark" : `of use, vs ${num(sc.BL01.portfolio_mae_pct, 1)}% for BL01`],
+          ["Weather bias", `${signed(fit.slope, 1)} pts/°C`, "claim per °C warmer than baseline days"],
+          ["Cold snaps (< −4 °C)", `${signed(band("< −4", m), 1)}%`, `average claim, ${num(band("< −4", "days"))} days`],
+        ]));
+        about.replaceChildren(el("strong", { text: `${m}: ` }), ABOUT[m] ?? "");
         plot(viz, {
-          x: { label: "Temperature change vs the day's baseline days, °C", grid: true },
-          y: { label: "Portfolio claimed delivery, % of use", grid: true, domain: [-35, 35] },
+          x: { label: "Temperature change vs the day's baseline days, °C", grid: true, domain: [Math.floor(xs[0]), Math.ceil(xs[1])] },
+          y: { label: "Portfolio claimed delivery, % of use (true 0)", grid: true, domain: [-36, 36] },
           marks: [
             Plot.ruleY([0], { stroke: c.axis }), Plot.ruleX([0], { stroke: c.axis }),
-            Plot.dot(d.days, { x: "dT", y: v, r: 3, fill: c.s1, fillOpacity: 0.45, stroke: c.surface, strokeWidth: 0.5,
+            Plot.dot(d.days, { x: "dT", y: m, r: 3, fill: c.s1, fillOpacity: 0.45, stroke: c.surface, strokeWidth: 0.5,
               channels: { Date: "date" }, tip: { ...tipStyle(), format: { x: (x) => `${signed(x, 1)} °C`, y: (y) => `${signed(y, 1)}%` } } }),
             Plot.line(xs.map((x) => [x, fit.intercept + fit.slope * x]), { stroke: c.s2, strokeWidth: 2 }),
-            Plot.text([[xs[1], fit.intercept + fit.slope * xs[1]]], { text: () => `${signed(fit.slope, 1)} pts/°C (simple fit)`, dx: -4, dy: -10, textAnchor: "end", fill: c.ink2 }),
+            Plot.text([[xs[1], fit.intercept + fit.slope * xs[1]]], { text: () => `${signed(fit.slope, 1)} pts/°C`, dx: -4, dy: -10, textAnchor: "end", fill: c.ink2 }),
           ],
         });
       }
@@ -337,41 +352,7 @@
     },
   });
 
-  // 6. Better baselines
-  cards.push({
-    kicker: "A better baseline", source: "better_baselines.py", needs: ["better_baselines"],
-    title: "A baseline that knows the weather fixes the cold-snap bias, without the gaming",
-    mount(body) {
-      const d = S.better_baselines;
-      const viz = el("div", { class: "viz" });
-      const pal = () => { const c = colours(); return [c.s1, c.s2, c.s3, c.s4]; };
-      const sc = Object.fromEntries(d.scores.map((r) => [r.method, r]));
-      body.append(
-        legend(d.methods.map((m, i) => [`${m} · MAE ${num(sc[m].portfolio_mae_pct, 1)}%`, pal()[i]])),
-        viz,
-        el("p", { class: "caption", text: `Out-of-sample test year (Mar 2013 – Feb 2014). Gradient boosting on weather and calendar cuts daily portfolio error from ${num(sc["BL01"].portfolio_mae_pct, 1)}% to ${num(sc["Gradient boosting"].portfolio_mae_pct, 1)}% and the cold-snap bias from ${num(d.by_dT[0]["BL01"], 1)}% to ${num(d.by_dT[0]["Gradient boosting"], 1)}%, using nothing households control. It can't fix per-meter noise, so the floor (two cards on) is untouched.` }),
-        dataTable(["Temperature change, °C", "Days", ...d.methods],
-          d.by_dT.map((r) => [r.band, num(r.days), ...d.methods.map((m) => signed(r[m], 1))])),
-      );
-      return () => {
-        const c = colours();
-        const long = d.by_dT.flatMap((r) => d.methods.map((m) => ({ band: r.band, method: m, v: r[m] })));
-        plot(viz, {
-          x: { label: "Temperature change vs baseline days, °C", domain: d.by_dT.map((r) => r.band), padding: 0.3 },
-          y: { label: "Portfolio claim, % of use (true 0)", grid: true },
-          color: { domain: d.methods, range: pal() },
-          marks: [
-            Plot.ruleY([0], { stroke: c.axis }),
-            Plot.line(long, { x: "band", y: "v", stroke: "method", strokeWidth: 2 }),
-            Plot.dot(long, { x: "band", y: "v", fill: "method", r: 4, stroke: c.surface, strokeWidth: 2 }),
-            Plot.tip(long, Plot.pointer({ x: "band", y: "v", ...tipStyle(), title: (r) => `${r.method}\n${r.band} °C: ${signed(r.v, 1)}%` })),
-          ],
-        });
-      };
-    },
-  });
-
-  // 7. Reality check
+  // 6. Reality check
   cards.push({
     kicker: "A real, randomised response", source: "reality_check.py", needs: ["reality_check"],
     title: "Against a real response, the baseline is right on average. The rules are another matter",
@@ -409,7 +390,7 @@
     },
   });
 
-  // 8. The floor (interactive)
+  // 7. The floor (interactive)
   cards.push({
     kicker: "The settlement floor · try it", source: "floor.py · grid()", needs: ["floor"],
     title: "Zeroing each meter's negatives turns noise into payment",
@@ -466,90 +447,167 @@
     },
   });
 
-  // 9. Overpayment
+  // 8. Overpayment, market phase
+  const MARKET = "Market phase (Nov 2024+)";
   cards.push({
     kicker: "What it adds up to", source: "overpayment.py", needs: ["overpayment"],
-    title: "Scenarios put roughly £8–17m of the £24.8m on delivery that didn't happen",
+    title: () => {
+      const d = S.overpayment, o = d.overpayment.map((r) => r[MARKET]);
+      return `Since November 2024, scenarios put £${num(d3.min(o) / 1e6, 1)}–${num(d3.max(o) / 1e6, 1)}m of the ` +
+        `${money(row(d.spend, "period", MARKET).cost)} paid on delivery that didn't happen`;
+    },
     mount(body) {
       const d = S.overpayment;
-      const periods = d.spend.map((r) => r.period).filter((p) => p !== "Total");
       const sc = d.scenarios;
-      let pick = "S3";
-      const viz = el("div", { class: "viz" }), info = el("p", { class: "caption" });
+      const paid = row(d.spend, "period", MARKET);
+      const PARTS = [["true", "Paid for real delivery", "s3"], ["baseline", "Baseline error", "s4"],
+        ["floor", "Settlement floor", "s2"], ["selection", "Opt-in selection", "s1"]];
+      const viz = el("div", { class: "viz" });
+      const winters = d.spend.filter((r) => r.period !== MARKET && r.period !== "Total");
       body.append(
-        el("div", { class: "toolbar" }, seg(sc.map((s) => [s.scenario, s.scenario]), pick, (v) => { pick = v; draw(); }, "Scenario")),
-        legend(periods.map((p, i) => [p, [colours().r1, colours().r2, colours().r3][i], true])),
-        viz, info,
-        el("p", { class: "caption", text: "Overpayment = (1 − real share) × what NESO settled. The scenarios match outside evidence: S1 matches Centre for Net Zero's 13% for Octopus in 2022/23, S3 and S4 match the NESO-funded CrowdFlex trial. The launch and second winters sit around S1–S3, market-phase events around S3–S4. Scenarios, not an estimate: the true saving is what nobody publishes." }),
-        dataTable(["Scenario", "True saving %", "ρ", "Real share", "Inflation", "Total overpaid"],
-          sc.map((s) => [s.scenario, num(s.saving_pct), num(s.rho, 1), num(s.real_share, 2), `${num(s.inflation, 2)}×`, money(row(d.overpayment, "scenario", s.scenario).Total)])),
-      );
-      function draw() {
-        const c = colours();
-        const ramp = [c.r1, c.r2, c.r3];
-        const long = d.overpayment.flatMap((r) => periods.map((p, i) => ({ scenario: r.scenario, period: p, v: r[p] / 1e6, fill: ramp[i] })));
-        const totals = d.overpayment.map((r) => ({ scenario: r.scenario, v: r.Total / 1e6 }));
-        const s = row(sc, "scenario", pick);
-        info.replaceChildren(el("strong", { text: `${s.scenario}: ${s.label}. ` }),
-          `True saving ${num(s.saving_pct)}% of use, foresight ρ ${num(s.rho, 1)}. Only ${num(s.real_share * 100)}% of settled volume is real (inflation ${num(s.inflation, 1)}×), so ${money(row(d.overpayment, "scenario", pick).Total)} was paid for nothing; the floor accounts for ${num(s.floor * 100)} of every 100 MWh settled.`);
-        const total = row(d.spend, "period", "Total").cost / 1e6;
-        plot(viz, {
-          height: 220, marginLeft: 36,
-          x: { label: `£m paid for delivery that didn't happen (axis ends at all £${num(total, 1)}m settled)`, domain: [0, total], grid: true },
-          y: { label: null, domain: sc.map((s) => s.scenario) },
-          marks: [
-            Plot.barX(long, Plot.stackX({ x: "v", y: "scenario", fill: (r) => r.fill, order: null, stroke: c.surface, strokeWidth: 2, insetTop: 8, insetBottom: 8,
-              fillOpacity: (r) => (r.scenario === pick ? 1 : 0.35), channels: { Period: "period" },
-              tip: { ...tipStyle(), format: { x: (v) => `£${num(v, 1)}m`, fill: false, fillOpacity: false } } })),
-            Plot.text(totals, { x: "v", y: "scenario", text: (r) => `£${num(r.v, 1)}m`, dx: 6, textAnchor: "start", fill: c.ink2 }),
-          ],
-        });
-      }
-      return draw;
-    },
-  });
-
-  // 10. Electrification and what to do
-  cards.push({
-    kicker: "What's next", source: "report §Electrification (back of envelope)", needs: [],
-    title: "Electrification raises the stakes: bigger, lumpier loads give the floor more to feed on",
-    mount(body) {
-      let p = 0.2;
-      const KW = 7, LCL = 0.15;  // home charger kW; floor phantom for a 2013 LCL home, kW
-      const viz = el("div", { class: "viz" }), out = el("div");
-      body.append(
-        el("div", { class: "toolbar" }, slider({ label: "Evenings an EV charges in the event window", min: 0, max: 0.6, step: 0.05, value: p, format: (v) => `${num(v * 100)}%`, onInput: (v) => { p = v; draw(); } })),
-        out, viz,
-        el("p", { class: "caption", text: "A home that charges a 7 kW car on some evenings has a baseline that expects part of that load. Every evening it doesn't charge looks like a saving, and every evening it does is floored to zero. Heat pumps add a weather bias several times larger than 2013 homes had. Real flexibility grows too; which grows faster is the open question." }),
+        tiles([["Paid in the market phase", money(paid.cost, 2), `${num(paid.settled_mwh)} MWh settled · £${num(paid.price)}/MWh`],
+          ["Paid for nothing", `${money(d3.min(d.overpayment, (r) => r[MARKET]), 1)}–${money(d3.max(d.overpayment, (r) => r[MARKET]), 1)}`, "S1 to S4"]]),
+        legend(PARTS.map(([, label, k]) => [label, colours()[k], true])),
+        viz,
+        el("p", { class: "caption", text: `Each bar is everything NESO settled for turn-down since November 2024, split by what bought it under one scenario: how much participants really save (40% of their use down to 5%) and how well they pick quiet evenings (foresight ρ). The rest of the bar is paid for baseline error (a sliver: BL01 is unbiased on average), for the floor rounding negative meters up to zero, and for opt-in selection. S1 matches Centre for Net Zero's 13% for 2022/23, S3 and S4 the NESO-funded CrowdFlex trial; small, cheap market-phase events sit around S3–S4. Scenarios, not an estimate: the true saving is what nobody publishes. The same shares apply to the ${money(d3.sum(winters, (r) => r.cost), 1)} paid in the two winters at the guaranteed price. Events since August 2026 aren't settled yet, so they aren't in the bars.` }),
         el("ul", { class: "list" },
           el("li", {}, el("strong", { text: "Remove the per-meter floor: " }), "net negatives across a provider's meters."),
           el("li", {}, el("strong", { text: "Use weather-aware baselines: " }), "never households' own same-day use."),
           el("li", {}, el("strong", { text: "Keep random holdout groups: " }), "the only clean way to verify today's volumes."),
           el("li", {}, el("strong", { text: "Publish the share of negative meters: " }), "NESO already collects it.")),
+        dataTable(["Scenario", "True saving %", "ρ", "Real share", "Inflation", "Paid for real delivery", "Paid for nothing"],
+          sc.map((s) => [`${s.scenario}: ${s.label}`, num(s.saving_pct), num(s.rho, 1), num(s.real_share, 2), `${num(s.inflation, 2)}×`,
+            money(s.real_share * paid.cost, 2), money(row(d.overpayment, "scenario", s.scenario)[MARKET], 2)])),
       );
-      function draw() {
+      return () => {
         const c = colours();
-        const phantom = (q) => (1 - q) * KW * q;
-        const curve = d3.range(0, 0.601, 0.01).map((q) => ({ q, kw: phantom(q) }));
-        out.replaceChildren(tiles([
-          ["Phantom delivery per EV home", `${num(phantom(p), 2)} kW`, `${num(phantom(p) / LCL, 1)}× a 2013 home`],
-          ["Heat pump, day 4 °C colder", "≈ −0.3 kW", "vs −0.05 kW for a 2013 home"],
-          ["Zero-emission cars", "2.0m", "+34% in a year (DfT, Jun 2026)"],
-        ]));
+        const narrow = viz.clientWidth < 560;
+        const label = (s) => (narrow ? s.scenario : `${s.scenario} · ${s.saving_pct}% saving`);
+        const long = sc.flatMap((s) => PARTS.map(([k, part, col]) => ({ y: label(s), part, v: Math.max(0, s[k]) * paid.cost / 1e6, fill: c[col] })));
+        const ends = sc.map((s) => ({ y: label(s), v: paid.cost / 1e6, text: `£${num(row(d.overpayment, "scenario", s.scenario)[MARKET] / 1e6, 2)}m for nothing` }));
         plot(viz, {
-          height: 220,
-          x: { label: "Share of evenings the EV charges in the event window", tickFormat: (v) => `${Math.round(v * 100)}%`, grid: false },
-          y: { label: "Phantom delivery under the floor, kW", grid: true, domain: [0, 2] },
+          height: 240, marginLeft: narrow ? 30 : 120, marginRight: narrow ? 8 : 130,
+          x: { label: "£m paid", domain: [0, paid.cost / 1e6], grid: true, tickFormat: (v) => `£${num(v, 1)}m` },
+          y: { label: null, domain: sc.map(label) },
           marks: [
-            Plot.ruleY([LCL], { stroke: c.s2, strokeWidth: 2 }),
-            Plot.text([LCL], { y: (v) => v, frameAnchor: "right", text: () => "2013 London home", dy: -8, fill: c.ink2 }),
-            Plot.lineY(curve, { x: "q", y: "kw", stroke: c.s1, strokeWidth: 2 }),
-            Plot.dot([{ q: p, kw: phantom(p) }], { x: "q", y: "kw", r: 6, fill: c.s1, stroke: c.surface, strokeWidth: 2 }),
-            Plot.tip(curve, Plot.pointerX({ x: "q", y: "kw", ...tipStyle(), title: (r) => `${Math.round(r.q * 100)}% of evenings\n${num(r.kw, 2)} kW` })),
+            Plot.barX(long, Plot.stackX({ x: "v", y: "y", fill: (r) => r.fill, order: null, stroke: c.surface, strokeWidth: 2, insetTop: 8, insetBottom: 8,
+              channels: { Part: "part" }, tip: { ...tipStyle(), format: { x: (v) => `£${num(v, 2)}m`, fill: false, y: false } } })),
+            narrow ? null : Plot.text(ends, { x: "v", y: "y", text: "text", dx: 8, textAnchor: "start", fill: c.ink2 }),
           ],
         });
-      }
-      return draw;
+      };
+    },
+  });
+
+  // 9. Electrification
+  // One illustrative household of three, annual kWh. Gas and appliance use are Ofgem's
+  // medium typical consumption values; 7,000 miles a year; heat pump SCOP 3; 40 mpg; 3.5 mi/kWh.
+  const HOMES = [
+    { home: "Gas boiler + petrol car", parts: [["Heating", "Gas", 8500], ["Hot water", "Gas", 3000], ["Car", "Petrol", 7200], ["Appliances, lighting, cooking", "Electricity", 2700]] },
+    { home: "Heat pump + EV", parts: [["Heating and hot water (heat pump)", "Electricity", 3800], ["Car (EV)", "Electricity", 2200], ["Appliances, lighting, cooking", "Electricity", 2700]] },
+  ];
+  cards.push({
+    kicker: "What's coming", source: "illustrative household; DfT, MCS, Ofgem (see caption)", needs: [],
+    title: "Electrifying a home cuts its total energy by more than half and triples its electricity, much of it movable",
+    mount(body) {
+      const FUELS = ["Electricity", "Gas", "Petrol"];
+      const tot = (h, f) => d3.sum(h.parts.filter((p) => !f || p[1] === f), (p) => p[2]);
+      const [gas, elec] = HOMES;
+      const viz = el("div", { class: "viz" });
+      body.append(
+        tiles([
+          ["Total energy", `${num(tot(gas))} → ${num(tot(elec))}`, `kWh a year (${signed((tot(elec) / tot(gas) - 1) * 100, 0)}%)`],
+          ["Electricity", `${num(tot(gas, "Electricity"))} → ${num(tot(elec, "Electricity"))}`, `kWh a year: ${num(tot(gas, "Electricity") / tot(gas) * 100)}% of energy → 100%`],
+          ["Movable in a 5–6pm event", "~0.3 → 2–4 kWh", "cold weekday: pre-heat, then pause the heat pump; delay the car"],
+        ]),
+        legend(FUELS.map((f, i) => [f, [colours().s1, colours().s2, colours().s4][i], true])),
+        viz,
+        el("p", { class: "caption", text: "One household of three, a year's energy by use. Heat pumps and electric cars need three to four times less energy than burning fuel, so the total falls even as electricity triples. Most homes are still on the top bar: zero-emission cars passed 2.0 million in June 2026 (DfT, +34% in a year), but heat pump installs ran at about 58,000 in 2024 (MCS) against the Warm Homes Plan's aim of 450,000 a year by 2030. Among households without one, only 5% say they're likely to get a heat pump in the next two years and 14% an electric car (Ofgem Flexibility and Net Zero Survey, June 2025)." }),
+        el("ul", { class: "list" },
+          el("li", {}, el("strong", { text: "More to offer: " }), "an electrified home can move kilowatt-hours, not a few hundred watt-hours, so DFS could reach more homes with more depth."),
+          el("li", {}, el("strong", { text: "A harder baseline: " }), "a 7 kW charger that runs on some evenings and not others teaches BL01 to expect load that is often absent. Evenings without charging look like savings, and the floor zeroes the evenings with it. A heat pump's use follows the weather several times more steeply than a 2013 home's."),
+          el("li", {}, el("strong", { text: "Other routes: " }), "the same devices can be steered by smart tariffs or run by aggregators, without DFS at all. Next card.")),
+        dataTable(["Household", "Use", "Fuel", "kWh a year"], HOMES.flatMap((h) => h.parts.map((p) => [h.home, ...p.slice(0, 2), num(p[2])]))),
+      );
+      return () => {
+        const c = colours();
+        const fill = { Electricity: c.s1, Gas: c.s2, Petrol: c.s4 };
+        const narrow = viz.clientWidth < 560;
+        const long = HOMES.flatMap((h) => h.parts.map(([use, fuel, kwh]) => ({ home: h.home, use, fuel, kwh })));
+        const short = (u) => ({ "Heating and hot water (heat pump)": "Heat pump", "Car (EV)": "EV" })[u] ?? u.replace(", lighting, cooking", "");
+        plot(viz, {
+          height: 200, marginLeft: narrow ? 8 : 160, marginBottom: 40,
+          x: { label: "kWh a year", grid: true, tickFormat: (v) => num(v) },
+          y: { label: null, domain: HOMES.map((h) => h.home), axis: narrow ? null : "left" },
+          marks: [
+            Plot.barX(long, Plot.stackX({ x: "kwh", y: "home", fill: (r) => fill[r.fuel], order: null, stroke: c.surface, strokeWidth: 2, rx: 3, insetTop: 12, insetBottom: 12,
+              channels: { Use: "use", Fuel: "fuel" }, tip: { ...tipStyle(), format: { x: (v) => `${num(v)} kWh`, fill: false, y: true } } })),
+            Plot.text(long, Plot.stackX({ x: "kwh", y: "home", order: null, text: (r) => (!narrow && r.kwh >= 2200 ? short(r.use) : ""), fill: "white", fontWeight: 600 })),
+            narrow ? Plot.text(HOMES, { y: "home", x: 0, text: "home", dy: -34, textAnchor: "start", fill: c.ink2 }) : null,
+          ],
+        });
+      };
+    },
+  });
+
+  // 10. The alternatives
+  // Ofgem, State of the Market report: Energy retail highlights, January 2026, p. 21 (Ofgem Tariff RFI), thousands
+  const SMART_TOU = [["Apr 2024", 297, 128], ["Jul 2024", 354, 143], ["Oct 2024", 418, 157], ["Jan 2025", 502, 162], ["Apr 2025", 575, 158], ["Jul 2025", 653, 182]];
+  const OFGEM = "https://www.ofgem.gov.uk/sites/default/files/2026-01/State-of-the-Market-Energy-Retail-Highlights-January-2026.pdf";
+  cards.push({
+    kicker: "Beyond DFS", source: "Ofgem State of the Market, Jan 2026; company announcements", needs: [],
+    title: "Electrification also feeds smart tariffs and virtual power plants. They have limits of their own",
+    mount(body) {
+      const viz = el("div", { class: "viz" });
+      const last = SMART_TOU.at(-1), first = SMART_TOU[1];
+      const kind = ["EV tariff", "Other smart ToU"];
+      body.append(
+        tiles([
+          ["Homes on smart ToU tariffs", `${num(last[1] + last[2])}k`, `2.8% of households, July 2025 (+${num(((last[1] + last[2]) / (first[1] + first[2]) - 1) * 100)}% in a year)`],
+          ["Largest domestic VPP (claimed)", "2 GW", "300,000+ connected batteries, chargers and solar, Jul 2026"],
+          ["Largest EV smart-charging fleet (claimed)", "1 GW", "150,000 cars on one tariff, May 2024"],
+          ["DFS, a typical market-phase event", "19 MW", "median procured per half-hour (this study)"],
+        ]),
+        el("div", { class: "kicker", text: "Domestic customers on smart time-of-use tariffs, thousands" }),
+        legend(kind.map((k, i) => [k, [colours().s1, colours().s3][i], true])),
+        viz,
+        el("p", { class: "caption" }, "Source: ", el("a", { href: OFGEM, target: "_blank", rel: "noopener", text: "Ofgem, State of the Market report: Energy retail highlights, January 2026" }),
+          ", p. 21 (Ofgem Tariff RFI). Growth is almost all EV tariffs, and market-wide half-hourly settlement, rolling out through 2027, makes smart tariffs possible for every home. Virtual power plants (aggregators running many home batteries, chargers and heat pumps as one) sell into the Balancing Mechanism and other markets. Their figures are company claims of connected capacity, not delivery, so they aren't comparable with DFS's settled MW, but the gap in scale is plain."),
+        el("div", { class: "cols" },
+          el("div", {}, el("div", { class: "kicker", text: "Smart tariffs: the limits" }),
+            el("ul", { class: "list" },
+              el("li", {}, "They reward homes that can shift: owners of cars, heat pumps and batteries. Others can pay more, and Ofgem is now asking how the price cap should treat them."),
+              el("li", {}, "Everyone starting at the same cheap half-hour makes a new peak, a problem for local networks."),
+              el("li", {}, "A price signal isn't a call: NESO can't count on it on one bad evening."),
+              el("li", {}, "Only 17% of households not on one say they're likely to switch; the top reason is no guarantee it saves money (27%)."))),
+          el("div", {}, el("div", { class: "kicker", text: "Virtual power plants: the limits" }),
+            el("ul", { class: "list" },
+              el("li", {}, "Delivery is often settled against a baseline too, so this study's measurement problem comes with them."),
+              el("li", {}, "Claimed gigawatts aren't delivered megawatts: the same device can be counted by several programmes, and few cars are plugged in at 5pm."),
+              el("li", {}, "NESO's control room has been slow to dispatch many small units over a few big ones."),
+              el("li", {}, "One company steering a million devices can switch them all at once, by design or by fault: why smart chargers must ship with security rules and randomised delays.")))),
+        el("p", { class: "caption" }, el("strong", { text: "DFS may turn out to be transitional. Its measurement problem isn't: " }),
+          "any scheme that pays against a guessed baseline, whether DFS, a VPP in the Balancing Mechanism or a local flexibility contract, faces the same noise, floor and selection."),
+        dataTable(["Quarter", "EV tariff (k)", "Other smart ToU (k)", "Total (k)"], SMART_TOU.map(([q, ev, o]) => [q, num(ev), num(o), num(ev + o)])),
+      );
+      return () => {
+        const c = colours();
+        const long = SMART_TOU.flatMap(([q, ev, o]) => [{ q, kind: kind[0], v: ev }, { q, kind: kind[1], v: o }]);
+        const totals = SMART_TOU.map(([q, ev, o]) => ({ q, v: ev + o }));
+        const narrow = viz.clientWidth < 560;
+        plot(viz, {
+          height: 230, marginLeft: 44,
+          x: { label: null, domain: SMART_TOU.map((r) => r[0]), padding: 0.35, tickFormat: (q) => (narrow ? q.replace(" 20", "\n’") : q) },
+          y: { label: null, grid: true, domain: [0, 900] },
+          color: { domain: kind, range: [c.s1, c.s3] },
+          marks: [
+            Plot.barY(long, Plot.stackY({ x: "q", y: "v", fill: "kind", order: null, stroke: c.surface, strokeWidth: 2, rx: 3,
+              tip: { ...tipStyle(), format: { y: (v) => `${num(v)}k` } } })),
+            Plot.text(totals, { x: "q", y: "v", text: (r) => `${num(r.v)}k`, dy: -8, fill: c.ink2 }),
+            Plot.ruleY([0], { stroke: c.axis }),
+          ],
+        });
+      };
     },
   });
 
@@ -560,12 +618,13 @@
   document.getElementById("total").textContent = String(cards.length).padStart(2, "0");
 
   cards.forEach((card, i) => {
+    const absent = card.needs.find((n) => !S[n]);
+    const title = typeof card.title === "function" ? (absent ? "" : card.title()) : card.title;  // some titles quote the data
     const body = el("article", { class: "card", "aria-labelledby": `h${i}` },
       el("p", { class: "kicker", text: `${String(i + 1).padStart(2, "0")} · ${card.kicker}` }),
-      el("h2", { id: `h${i}`, text: card.title }));
+      el("h2", { id: `h${i}`, text: title }));
     const slide = el("section", { class: "slide", id: `image-${i + 1}`, "aria-roledescription": "slide", "aria-label": `${i + 1} of ${cards.length}` }, body);
     track.append(slide);
-    const absent = card.needs.find((n) => !S[n]);
     if (absent) { body.append(missing(absent)); draws.push(() => {}); }
     else {
       try { draws.push(card.mount(body) || (() => {})); }

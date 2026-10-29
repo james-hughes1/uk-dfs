@@ -133,7 +133,7 @@ body {
 
 /* Segmented controls and sliders */
 .toolbar { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; margin: 0 0 10px; }
-.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 999px; padding: 2px; background: var(--page); }
+.seg { display: inline-flex; flex-wrap: wrap; max-width: 100%; border: 1px solid var(--border); border-radius: 18px; padding: 2px; background: var(--page); }
 .seg button {
   border: 0; background: transparent; color: var(--ink-2); font: inherit; font-size: 13px;
   padding: 5px 12px; border-radius: 999px; cursor: pointer;
@@ -164,6 +164,8 @@ details.data th { color: var(--ink-2); font-weight: 600; }
 .list { margin: 6px 0 0; padding-left: 18px; color: var(--ink-2); }
 .list li { margin: 4px 0; }
 .list strong { color: var(--ink); }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 4px 24px; margin-top: 12px; }
+.caption a { color: inherit; }
 
 /* Dots */
 .dots { display: flex; justify-content: center; gap: 4px; padding: 8px 16px max(12px, env(safe-area-inset-bottom)); }
