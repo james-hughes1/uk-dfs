@@ -380,31 +380,37 @@
     kicker: "The settlement floor · try it", source: "floor.py · grid()", needs: ["floor"],
     title: "Zeroing each meter's negatives turns noise into payment",
     mount(body) {
-      const g = S.floor.grid;
-      const savings = [...new Set(g.map((r) => r.saving_pct))].sort((a, b) => a - b);
-      const rhos = [...new Set(g.map((r) => r.rho))].sort((a, b) => a - b);
-      let si = savings.indexOf(10), ri = rhos.indexOf(0.1);
-      if (si < 0) si = 1; if (ri < 0) ri = 0;
+      const all = S.floor.grid;
+      const uniq = (k) => [...new Set(all.map((r) => r[k]))].sort((a, b) => a - b);
+      const savings = uniq("saving_pct"), rhos = uniq("rho"), shares = uniq("share");
+      let si = savings.indexOf(10), ri = rhos.indexOf(0.1), qi = shares.indexOf(0.8);
+      if (si < 0) si = 1; if (ri < 0) ri = 0; if (qi < 0) qi = shares.length - 1;
       const out = el("div"), viz = el("div", { class: "viz" });
       body.append(
         el("div", { class: "toolbar" },
           slider({ label: "True saving", min: 0, max: savings.length - 1, step: 1, value: si, format: (i) => `${savings[i]}%`, onInput: (i) => { si = i; draw(); } }),
-          slider({ label: "Foresight ρ", min: 0, max: rhos.length - 1, step: 1, value: ri, format: (i) => num(rhos[i], 1), onInput: (i) => { ri = i; draw(); } })),
+          slider({ label: "Foresight ρ", min: 0, max: rhos.length - 1, step: 1, value: ri, format: (i) => num(rhos[i], 1), onInput: (i) => { ri = i; draw(); } }),
+          slider({ label: "Events joined", min: 0, max: shares.length - 1, step: 1, value: qi, format: (i) => `${num(shares[i] * 100)}%`, onInput: (i) => { qi = i; draw(); } })),
         out,
         legend([["True saving", colours().s3, true], ["Baseline error", colours().s4, true], ["Settlement floor", colours().s2, true], ["Opt-in selection", colours().s1, true]]),
         viz,
-        el("p", { class: "caption", text: "Set how much participants really save and how well they pick quiet evenings to opt in. The rules settle each meter's half-hour separately and set negatives to zero, so noise that would cancel is paid. The contract says so, over 99% of meters are manual opt-in, and real data agrees: NESO found 40% of 2022/23 opted-in meters came out negative; a NESO-funded trial measured 8.2× inflation for winter turn-down." }),
-        dataTable(["True saving %", "ρ", "Half-hours negative %", "Plain claim %", "Floored claim %"],
-          g.filter((r) => [0, 0.1, 0.3].includes(r.rho)).map((r) => [num(r.saving_pct), num(r.rho, 1), num(r.negative_hh_pct), signed(r.claim_pct, 1), signed(r.floored_pct, 1)])),
+        el("p", { class: "caption", text: "Set how much participants really save, how well they pick quiet evenings, and how many events they join (NESO saw about 83% in 2022/23). Joining most events leaves little room to pick, so selection shrinks and more meters come out negative for the floor to round up. The rules settle each meter's half-hour separately and set negatives to zero, so noise that would cancel is paid. The contract says so, over 99% of meters are manual opt-in, and real data agrees: NESO found 40% of 2022/23 opted-in meters came out negative; a NESO-funded trial measured 8.2× inflation for winter turn-down." }),
+        dataTable(["Events joined", "True saving %", "ρ", "Half-hours negative %", "Plain claim %", "Floored claim %"],
+          all.filter((r) => [0, 0.1, 0.3].includes(r.rho) && [0, 10, 20].includes(r.saving_pct)).map((r) => [`${num(r.share * 100)}%`, num(r.saving_pct), num(r.rho, 1), num(r.negative_hh_pct), signed(r.claim_pct, 1), signed(r.floored_pct, 1)])),
       );
       function draw() {
         const c = colours();
-        const s = savings[si], rho = rhos[ri];
+        const s = savings[si], rho = rhos[ri], q = shares[qi];
+        const g = all.filter((x) => x.share === q);
         const r = g.find((x) => x.saving_pct === s && x.rho === rho);
         const r0 = g.find((x) => x.saving_pct === s && x.rho === 0);
+        // Floor and selection interact (foresight leaves fewer meters negative), so split them
+        // order-free: the average over both orders, as overpayment.decompose() does
+        const floor = ((r0.floored_pct - r0.claim_pct) + (r.floored_pct - r.claim_pct)) / 2;
+        const selection = ((r.floored_pct - r0.floored_pct) + (r.claim_pct - r0.claim_pct)) / 2;
         const parts = [
           ["True saving", s, c.s3], ["Baseline error", r0.claim_pct - s, c.s4],
-          ["Settlement floor", r0.floored_pct - r0.claim_pct, c.s2], ["Opt-in selection", r.floored_pct - r0.floored_pct, c.s1],
+          ["Settlement floor", floor, c.s2], ["Opt-in selection", selection, c.s1],
         ].map(([part, v, fill]) => ({ part, v: Math.max(0, v), fill }));
         out.replaceChildren(tiles([
           ["Settled claim", `${num(r.floored_pct, 1)}%`, "of participants' use"],
@@ -429,7 +435,7 @@
   // 9. Overpayment
   cards.push({
     kicker: "What it adds up to", source: "overpayment.py", needs: ["overpayment"],
-    title: "Scenarios put roughly £9–18m of the £24.8m on delivery that didn't happen",
+    title: "Scenarios put roughly £8–17m of the £24.8m on delivery that didn't happen",
     mount(body) {
       const d = S.overpayment;
       const periods = d.spend.map((r) => r.period).filter((p) => p !== "Total");
