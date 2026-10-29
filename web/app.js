@@ -500,11 +500,12 @@
   });
 
   // 9. Electrification
-  // One illustrative household of three, annual kWh. Gas and appliance use are Ofgem's
-  // medium typical consumption values; 7,000 miles a year; heat pump SCOP 3; 40 mpg; 3.5 mi/kWh.
+  // One illustrative household of three, annual kWh, as in the report's electrification section.
+  // Gas and electricity are Ofgem's typical consumption values (July 2026); 7,000 miles a year at
+  // 40 mpg or 0.3 kWh/mile; heat pump replaces a 90%-efficient boiler at seasonal efficiency 2.8.
   const HOMES = [
-    { home: "Gas boiler + petrol car", parts: [["Heating", "Gas", 8500], ["Hot water", "Gas", 3000], ["Car", "Petrol", 7200], ["Appliances, lighting, cooking", "Electricity", 2700]] },
-    { home: "Heat pump + EV", parts: [["Heating and hot water (heat pump)", "Electricity", 3800], ["Car (EV)", "Electricity", 2200], ["Appliances, lighting, cooking", "Electricity", 2700]] },
+    { home: "Gas boiler + petrol car", parts: [["Heating", "Gas", 7000], ["Hot water", "Gas", 2500], ["Car", "Petrol", 7200], ["Appliances, lighting, cooking", "Electricity", 2500]] },
+    { home: "Heat pump + EV", parts: [["Heating and hot water (heat pump)", "Electricity", 3100], ["Car (EV)", "Electricity", 2100], ["Appliances, lighting, cooking", "Electricity", 2500]] },
   ];
   cards.push({
     kicker: "What's coming", source: "illustrative household; DfT, MCS, Ofgem (see caption)", needs: [],
@@ -522,7 +523,7 @@
         ]),
         legend(FUELS.map((f, i) => [f, [colours().s1, colours().s2, colours().s4][i], true])),
         viz,
-        el("p", { class: "caption", text: "One household of three, a year's energy by use. Heat pumps and electric cars need three to four times less energy than burning fuel, so the total falls even as electricity triples. Most homes are still on the top bar: zero-emission cars passed 2.0 million in June 2026 (DfT, +34% in a year), but heat pump installs ran at about 58,000 in 2024 (MCS) against the Warm Homes Plan's aim of 450,000 a year by 2030. Among households without one, only 5% say they're likely to get a heat pump in the next two years and 14% an electric car (Ofgem Flexibility and Net Zero Survey, June 2025)." }),
+        el("p", { class: "caption", text: "One household of three, a year's energy by use. Heat pumps and electric cars need about a third of the energy of burning fuel, so the total falls even as electricity triples. Most homes are still on the top bar: zero-emission cars passed 2.0 million in June 2026 (DfT, +34% in a year), but heat pumps are far behind: a record of just over 60,000 installed in 2025 and about 250,000 since 2009 (MCS), against the Warm Homes Plan's aim of 450,000 a year by 2030. Among households without one, only 5% say they're likely to get a heat pump in the next two years and 14% an electric car (Ofgem Flexibility and Net Zero Survey, June 2025)." }),
         el("ul", { class: "list" },
           el("li", {}, el("strong", { text: "More to offer: " }), "an electrified home can move kilowatt-hours, not a few hundred watt-hours, so DFS could reach more homes with more depth."),
           el("li", {}, el("strong", { text: "A harder baseline: " }), "a 7 kW charger that runs on some evenings and not others teaches BL01 to expect load that is often absent. Evenings without charging look like savings, and the floor zeroes the evenings with it. A heat pump's use follows the weather several times more steeply than a 2013 home's."),
