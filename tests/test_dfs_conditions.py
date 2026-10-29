@@ -33,7 +33,7 @@ def test_describe_events_excludes_previous_event_days_from_dT():
     assert ev.season.tolist() == ["Winter", "Winter"] and ev.working.all()
     assert ev.dT.tolist() == pytest.approx([-10, 5])  # the cold day isn't a baseline day
     assert ev.dT_band.tolist() == ["< −4", "> 4"]
-    assert ev.group.eq(events.A2).all()
+    assert ev.group.eq(events.SINCE_OCT_2023).all()
 
 
 def test_working_day_baseline_with_five_to_nine_days():
@@ -68,7 +68,8 @@ def panel(homes=40, seed=0):
 def event_rows(cells, slot=34, length=2):
     """Synthetic events in the given (dT_band, working, season) cells."""
     base = {"date": pd.Timestamp("2025-01-15"), "start": pd.NaT, "minutes": 30 * length,
-            "group": events.A2, "temp": 5.0, "dT": 0.0, "slot": slot, "length": length}  # fmt: skip
+            "group": events.SINCE_OCT_2023, "temp": 5.0, "dT": 0.0, "slot": slot,
+            "length": length}  # fmt: skip
     return pd.DataFrame([base | dict(zip(c1.CELL, c, strict=True)) for c in cells])
 
 

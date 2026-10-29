@@ -92,38 +92,60 @@
 
   // 1. The question
   cards.push({
-    kicker: "The question", source: "overpayment.py (NESO settled turn-down)", needs: ["overpayment"],
+    kicker: "The question", source: "overpayment.py (NESO turn-down: accepted bids per event, settled per period)", needs: ["overpayment"],
     title: "Britain has paid households and businesses to use less electricity. How much of it was real?",
     mount(body) {
       const d = S.overpayment;
       const spend = d.spend.filter((r) => r.period !== "Total");
+      const periods = spend.map((r) => r.period);
       const total = row(d.spend, "period", "Total");
-      const nEvents = S.dfs_conditions ? S.dfs_conditions.events.length : null;
+      const events = d.events.map((e) => ({ ...e, date: new Date(`${e.start}Z`) }));  // UK wall clock, kept as UTC
+      const count = (p) => events.filter((e) => e.period === p).length;
+      const DAY = 864e5;
+      // One band per period, from its first event to its last, padded so single events show
+      const bands = periods.map((p) => {
+        const [lo, hi] = d3.extent(events.filter((e) => e.period === p), (e) => e.date);
+        return { period: p, x1: new Date(+lo - 12 * DAY), x2: new Date(+hi + 12 * DAY) };
+      });
       const viz = el("div", { class: "viz" });
       body.append(
         el("div", { class: "hero", text: money(total.cost) }),
         el("p", { class: "hero-sub", text: `settled by NESO for demand turn-down through the Demand Flexibility Service, winter 2022/23 to today` }),
-        tiles([
-          ["Turn-down events", nEvents ? num(nEvents) : "—", "Nov 2022 – Sep 2026"],
-          ["Energy settled", `${num(total.settled_mwh)} MWh`, "as claimed by providers"],
-          ["Price per MWh", `£${num(spend[0].price)} → £${num(spend[2].price)}`, "first winter → since Nov 2024"],
-        ]),
+        tiles(spend.map((r) => [r.period, money(r.cost), `${num(count(r.period))} events · £${num(r.price)}/MWh settled`])),
+        legend(periods.map((p, i) => [p, [colours().r1, colours().r2, colours().r3][i]])),
         viz,
+        el("p", { class: "caption", text: "Each bubble is one turn-down event: its height is the average price of the accepted bids, its area the energy procured; hollow bubbles are test events. The launch and second winters were mostly tests at the £3,000/MWh guaranteed price. In the market phase, since November 2024, NESO calls DFS only when it beats the alternatives, so events are many, small and cheap. The boxes show what NESO settled after delivery." }),
         el("p", { class: "caption" }, "Nobody can see a saving directly. Every payment rests on a ",
           el("strong", { text: "baseline" }), ": an estimate of what each home would have used. This study asks whether that estimate, and the rules around it, pay for flexibility that really happened. Swipe to see what we found."),
       );
-      body.append(dataTable(["Period", "Settled MWh", "Settled cost", "£/MWh"],
-        d.spend.map((r) => [r.period, num(r.settled_mwh), money(r.cost), num(r.price)])));
+      body.append(dataTable(["Period", "Events", "Procured MWh", "Settled MWh", "Settled cost", "Settled £/MWh"],
+        d.spend.map((r) => [r.period, num(r.period === "Total" ? events.length : count(r.period)),
+          num(d3.sum(events.filter((e) => r.period === "Total" || e.period === r.period), (e) => e.procured_mwh)),
+          num(r.settled_mwh), money(r.cost), num(r.price)])));
       return () => {
         const c = colours();
+        const ramp = Object.fromEntries(periods.map((p, i) => [p, [c.r1, c.r2, c.r3][i]]));
+        const [t0, t1] = d3.extent(events, (e) => e.date);
+        const narrow = viz.clientWidth < 560;  // phones: short period labels so they don't collide
+        const short = (p) => ({ Launch: "Launch", Second: "2nd", Market: "Market" })[p.split(" ")[0]] ?? p;
         plot(viz, {
-          height: 190, marginLeft: 92, x: { label: "Settled cost, £m", grid: true },
-          y: { label: null, domain: spend.map((r) => r.period) },
+          height: 320, marginLeft: 56,
+          x: { label: null, type: "utc", domain: [new Date(+t0 - 40 * DAY), new Date(+t1 + 40 * DAY)] },
+          y: { label: "Accepted price, £/MWh (log scale)", type: "log", domain: [50, 6000], grid: true,
+            ticks: [50, 100, 200, 500, 1000, 2000, 5000], tickFormat: (v) => `£${num(v)}` },
+          r: { domain: [0, d3.max(events, (e) => e.procured_mwh)], range: [1.5, 16] },
           marks: [
-            Plot.barX(spend, { x: (r) => r.cost / 1e6, y: "period", fill: c.s1, rx: 4, insetTop: 6, insetBottom: 6,
-              tip: { ...tipStyle(), format: { x: (v) => `£${num(v, 1)}m`, y: true } } }),
-            Plot.text(spend, { x: (r) => r.cost / 1e6, y: "period", text: (r) => money(r.cost), dx: 6, textAnchor: "start", fill: c.ink2 }),
-            Plot.ruleX([0], { stroke: c.axis }),
+            Plot.rectX(bands, { x1: "x1", x2: "x2", fill: c.ink2, fillOpacity: 0.06 }),
+            Plot.text(bands, { x: "x1", text: (b) => (narrow ? short(b.period) : b.period), frameAnchor: "bottom",
+              dy: -6, dx: 4, textAnchor: "start", fill: c.ink2, fontWeight: 600 }),
+            Plot.ruleY([3000], { stroke: c.axis, strokeDasharray: "4,3" }),
+            Plot.text([3000], { y: (v) => v, frameAnchor: "right", text: () => "£3,000 guaranteed price", dy: -8, textAnchor: "end", fill: c.ink2 }),
+            Plot.dot(events, { x: "date", y: "price", r: "procured_mwh",
+              fill: (e) => (e.test ? "none" : ramp[e.period]), fillOpacity: 0.6,
+              stroke: (e) => ramp[e.period], strokeWidth: (e) => (e.test ? 1.5 : 0.75) }),
+            Plot.tip(events, Plot.pointer({ x: "date", y: "price", ...tipStyle(),
+              title: (e) => `${d3.utcFormat("%-d %b %Y, %H:%M")(e.date)} · ${e.test ? "test" : "live"} event\n` +
+                `${num(e.procured_mwh, e.procured_mwh < 10 ? 1 : 0)} MWh procured\n£${num(e.price)}/MWh · £${num(e.cost)} accepted` })),
           ],
         });
       };
@@ -180,7 +202,7 @@
   // 3. National check
   cards.push({
     kicker: "Check 1 · National demand", source: "event_study.py", needs: ["event_study"],
-    title: "In national demand, the first winter's events are consistent with full delivery, and with none",
+    title: "In national demand, the launch winter's events are consistent with full delivery, and with none",
     mount(body) {
       const d = S.event_study;
       const groups = d.profiles.map((p) => p.group);
@@ -188,7 +210,7 @@
       const viz = el("div", { class: "viz" });
       const cap = el("p", { class: "caption" });
       body.append(
-        el("div", { class: "toolbar" }, seg(groups.map((x) => [x, x.replace(":", " ·")]), g, (v) => { g = v; draw(); }, "Event group")),
+        el("div", { class: "toolbar" }, seg(groups.map((x) => [x, x]), g, (v) => { g = v; draw(); }, "Event group")),
         legend([["Event day − matched days (95% CI)", colours().s1], ["Claimed reduction", colours().s3], ["Reference hour", colours().axis, true]]),
         viz, cap,
         dataTable(["Group", "Test", "Detected ÷ claimed", "95% CI", "Events"],
@@ -201,7 +223,7 @@
         const real = d.summary.find((r) => r.group === g && r.test === "Real events");
         cap.replaceChildren(`Five-minute GB generation on event days, minus similar days without an event, around ${p.events} events of ${p.length} minutes. Detected `,
           el("strong", { text: `${num(real.ratio, 2)}× the claim` }), ` (95% CI ${num(real.lo, 2)} to ${num(real.hi, 2)}). ` +
-          (g.startsWith("A1") ? "The dip is there, but the interval runs from nothing to three times the claim." : "Events since October 2023 average about 30 MW: lost in the noise of a 30 GW system."));
+          (g === groups[0] ? "The dip is there, but the interval runs from nothing to three times the claim." : "Events since October 2023 average about 30 MW: lost in the noise of a 30 GW system."));
         plot(viz, {
           x: { label: "Minutes from event start", grid: false },
           y: { label: "MW, event day − matched days", grid: true },
@@ -446,7 +468,7 @@
         el("div", { class: "toolbar" }, seg(sc.map((s) => [s.scenario, s.scenario]), pick, (v) => { pick = v; draw(); }, "Scenario")),
         legend(periods.map((p, i) => [p, [colours().r1, colours().r2, colours().r3][i], true])),
         viz, info,
-        el("p", { class: "caption", text: "Overpayment = (1 − real share) × what NESO settled. The scenarios match outside evidence: S1 matches Centre for Net Zero's 13% for Octopus in 2022/23, S3 and S4 match the NESO-funded CrowdFlex trial. The first two winters sit around S1–S3, today's low-reward events around S3–S4. Scenarios, not an estimate: the true saving is what nobody publishes." }),
+        el("p", { class: "caption", text: "Overpayment = (1 − real share) × what NESO settled. The scenarios match outside evidence: S1 matches Centre for Net Zero's 13% for Octopus in 2022/23, S3 and S4 match the NESO-funded CrowdFlex trial. The launch and second winters sit around S1–S3, market-phase events around S3–S4. Scenarios, not an estimate: the true saving is what nobody publishes." }),
         dataTable(["Scenario", "True saving %", "ρ", "Real share", "Inflation", "Total overpaid"],
           sc.map((s) => [s.scenario, num(s.saving_pct), num(s.rho, 1), num(s.real_share, 2), `${num(s.inflation, 2)}×`, money(row(d.overpayment, "scenario", s.scenario).Total)])),
       );

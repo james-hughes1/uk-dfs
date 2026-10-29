@@ -55,7 +55,7 @@ The LCL raw files (`LCL-FullData.zip`, `Tariffs.xlsx`) are downloaded by hand in
 
 | Module | What it is |
 | --- | --- |
-| `features.events` | DFS turn-down events, one row each, split into A1 (2022/23, in-day adjustment on) and A2 (from 27 Oct 2023) |
+| `features.events` | DFS turn-down events, one row each; the phase names (launch winter, second winter, market phase) and the national check's two groups (launch winter vs since Oct 2023) |
 | `features.conditions` | Temperature change against each day's BL01 baseline days (the main driver of BL01 bias) |
 | `models.bl01` | BL01 baseline (Elexon P376), vectorised over households, with the optional in-day adjustment and bank holidays to 2026 |
 | `models.baselines` | Alternative baselines from weather and calendar only: `TemperatureScaled`, `BoostedRatio` |
@@ -97,9 +97,9 @@ The data comes from `web/data/*.js`, which the analyses above write, so rerunnin
 
 | # | Card | Data from |
 | --- | --- | --- |
-| 1 | £ settled for turn-down, by period | `overpayment` |
+| 1 | Every turn-down event over time: accepted price and size; £ settled per phase | `overpayment` |
 | 2 | One home's day: baseline vs actual, current vs 2022/23 rules (interactive) | `baseline_error` |
-| 3 | National event study, A1 / A2 (interactive) | `event_study` |
+| 3 | National event study, launch winter / since Oct 2023 (interactive) | `event_study` |
 | 4 | One home vs the portfolio: noise vs bias | `baseline_error` |
 | 5 | Daily error vs temperature change (interactive) | `baseline_error`, `dfs_conditions` |
 | 6 | Better baselines: bias by temperature change | `better_baselines` |
@@ -114,15 +114,23 @@ The headline numbers from all of these are gathered on one page at the front of 
 
 Section numbers follow the report (`reports/report/report.tex`). For each analysis, the three stages are **explore** (notebook), **code** (move into `src/uk_dfs` with tests) and **write up** (report section). Uncertainty throughout: bootstrap over events for Part A, moving-block bootstrap over days (weeks for price events) for Part B.
 
+DFS phases, named after the two rule changes that split them (`features.events`):
+
+- **Launch winter** (2022/23): £3,000/MWh guaranteed price for test events; in-day adjustment on for domestic meters
+- **Second winter** (2023/24): guaranteed price kept; in-day adjustment removed from 27 Oct 2023
+- **Market phase** (Nov 2024+): no guaranteed price, called in merit year-round, plain BL01
+
+The national check pools the last two as **since Oct 2023**: the second winter has only 17 events.
+
 ### Part A: national check
-- [ ] **A1. 2022/23 events** (difference-in-differences: 1.11× claim, CI −0.63 to 3.25)
+- [ ] **A1. Launch winter (2022/23) events** (difference-in-differences: 1.11× claim, CI −0.63 to 3.25)
   - [x] Code: demand/DFS/weather loaders out of `notebooks/_common.py` into `data/`; event study into `evaluation/`
   - [ ] Write up, including the comparison with Centre for Net Zero's ~87%
 - [ ] **A2. Events since Oct 2023** (not verifiable: −0.01× claim, CI −3.51 to 2.81)
   - [x] Code: matched-day correction and same-day placebo
   - [ ] Write up
 - [ ] **A3. How many events would it take?** (pilot zone regression: slope 0.90, SE 1.05)
-  - [ ] Simulation: add known effects to non-event days, rerun A1's estimator, record the detection rate by effect size and number of events
+  - [ ] Simulation: add known effects to non-event days, rerun the launch-winter estimator, record the detection rate by effect size and number of events
   - [ ] Code and write up
 
 ### Part B: household baselines (Low Carbon London)
@@ -178,7 +186,7 @@ In three steps: measure baseline error with nobody responding, build a better ba
   - [x] Post-stratify: match each event to LCL days in its cell (temperature-change band × day type × season; coarsens where thin), for each rules regime (replaces B5's stylised day pools)
   - [x] Code: `evaluation/dfs_conditions.py`, `tests/test_dfs_conditions.py`; England & Wales bank holidays to 2026 in `models/bl01.py`; `temperature_change` accepts 5–9 working baseline days, as BL01 does
   - [ ] Refresh GB weather past 30 Sep 2026 (one October event has no temperature)
-  - [ ] Opt-in (ρ) and the floor on DFS conditions: rerun B5/B6's opt-in at each event's window, then post-stratify as above, so C2's waterfall layers share one footing (A2's median event is 3 h, not B5's 1 h at 17:00)
+  - [ ] Opt-in (ρ) and the floor on DFS conditions: rerun B5/B6's opt-in at each event's window, then post-stratify as above, so C2's waterfall layers share one footing (the median event since Oct 2023 is 3 h, not B5's 1 h at 17:00)
   - [ ] Write up
 - [ ] **C2. Overpayment scenarios**
   - [x] Four labelled scenarios on settled cost (`evaluation/overpayment.py`, `tests/test_overpayment.py`)

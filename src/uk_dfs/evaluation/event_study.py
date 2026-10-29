@@ -37,9 +37,9 @@ from dataclasses import dataclass, replace
 import numpy as np
 import pandas as pd
 
-from uk_dfs.features.events import A1, A2, event_days, event_table
+from uk_dfs.features.events import LAUNCH, SINCE_OCT_2023, event_days, event_table
 
-GROUPS = (A1, A2)
+GROUPS = (LAUNCH, SINCE_OCT_2023)
 
 
 @dataclass(frozen=True)

@@ -5,6 +5,7 @@ import pandas as pd
 import pytest
 
 from uk_dfs.evaluation import overpayment as op
+from uk_dfs.features.events import LAUNCH, MARKET, SECOND
 
 
 def fake_grid():
@@ -62,11 +63,27 @@ def test_settled_spend_splits_periods_and_counts_unsettled():
         "settled_cost": [300_000.0, 150_000.0, 4_000.0, np.nan, 99.0],
     })  # fmt: skip
     s = op.settled_spend(summary)
-    assert list(s.index) == ["2022/23", "2023/24", "Nov 2024 on", "Total"]
-    assert s.loc["2022/23", "settled_mwh"] == 50  # MW over a half-hour
-    assert s.loc["Nov 2024 on", "unsettled_hh"] == 1
+    assert list(s.index) == [LAUNCH, SECOND, MARKET, "Total"]
+    assert s.loc[LAUNCH, "settled_mwh"] == 50  # MW over a half-hour
+    assert s.loc[MARKET, "unsettled_hh"] == 1
     assert s.loc["Total", "cost"] == 454_000  # turn-up excluded
-    assert s.loc["2022/23", "price"] == pytest.approx(6000)
+    assert s.loc[LAUNCH, "price"] == pytest.approx(6000)
+
+
+def test_event_prices_groups_runs_and_prices_accepted_bids():
+    start = pd.to_datetime(["2023-01-10 17:00", "2023-01-10 17:30", "2025-01-08 17:00",
+                            "2025-01-08 18:00", "2025-01-09 17:00"])  # fmt: skip
+    summary = pd.DataFrame({
+        "start": start, "direction": ["Downwards"] * 4 + ["Upwards"],
+        "type": ["Test", "Test", "Live", "Live", "Live"],
+        "proc": [100.0, 50.0, 40.0, 20.0, 30.0],
+        "cost": [150_000.0, 75_000.0, 1_000.0, 600.0, 9.0],
+    })  # fmt: skip
+    ev = op.event_prices(summary)
+    assert list(ev.period) == [LAUNCH, MARKET, MARKET]  # 18:00 not contiguous
+    assert list(ev.test) == [True, False, False]
+    assert list(ev.procured_mwh) == [75, 20, 10]  # MW over half-hours; turn-up excluded
+    assert list(ev.price) == pytest.approx([3000, 50, 60])
 
 
 def test_overpayment_is_unreal_share_times_cost():

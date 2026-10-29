@@ -79,7 +79,7 @@ def test_overpayment_chart():
     dec = overpayment.decompose(pd.DataFrame(rows))
     spend = pd.DataFrame(
         {"settled_mwh": [10.0, 20, 30], "cost": [5e6, 2e6, 1e6], "unsettled_hh": [0, 0, 2]},
-        index=["2022/23", "2023/24", "Nov 2024 on"],
+        index=list(overpayment.PERIODS),
     )
     spend.loc["Total"] = spend.sum()
     spend["price"] = spend.cost / spend.settled_mwh
@@ -112,13 +112,13 @@ def test_reality_check_and_better_baselines_charts():
 
 
 def test_dfs_conditions_chart():
-    from uk_dfs.features.events import A1, A2
+    from uk_dfs.features.events import LAUNCH, SINCE_OCT_2023
     from uk_dfs.reporting.dfs_conditions import plot_dfs_conditions, web_data
 
     ev = pd.DataFrame(
         {
             "date": pd.to_datetime(["2022-12-01", "2025-06-01"]),
-            "group": [A1, A2],
+            "group": [LAUNCH, SINCE_OCT_2023],
             "minutes": [60, 180],
             "temp": [2.0, 15.0],
             "dT": [-3.0, 1.0],
@@ -126,8 +126,8 @@ def test_dfs_conditions_chart():
     )
     stat = {k: 1.0 for k in ("claim_pct", "floored_pct")}
     stat |= {f"{k}_{e}": v for k in list(stat) for e, v in (("lo", 0.5), ("hi", 1.5))}
-    out = pd.DataFrame([{"group": A1, "in_force": True, **stat},
-                        {"group": A2, "in_force": True, **stat}])  # fmt: skip
+    out = pd.DataFrame([{"group": LAUNCH, "in_force": True, **stat},
+                        {"group": SINCE_OCT_2023, "in_force": True, **stat}])  # fmt: skip
     ref = {"BL01": {"claim_pct": -0.6, "floored_pct": 26.8}}
     assert plot_dfs_conditions(ev, {"timing only": out}, ref).axes
     data = outputs.plain(web_data(ev, {"timing only": out}, ref))

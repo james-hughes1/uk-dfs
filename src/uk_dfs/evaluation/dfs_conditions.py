@@ -15,7 +15,7 @@ real events:
    coarsens: first drop season, then dT, then day type. Each event counts once (its cell's
    sums are scaled to one meter-day), so longer events weigh more in half-hour shares.
 
-Read out per rules period (A1 2022/23, in-day adjustment on; A2 from 27 Oct 2023, off):
+Read out per rules period (launch winter 2022/23, in-day adjustment on; since 27 Oct 2023, off):
 share of meter-periods negative, plain claim, floored claim, all % of use, under both BL01
 variants (`in_force` marks the period's own rules). A "timing only" version, matched on
 nothing but the window, separates the effect of when events run from what the weather
@@ -64,7 +64,8 @@ CELL = ("dT_band", "working", "season")
 # Finest first; each event uses the first level with at least `min_days` LCL days
 LEVELS = (CELL, ("dT_band", "working"), ("working",), ())
 TIMING_ONLY = ((),)
-RULES = {events.A1: VARIANTS[1], events.A2: VARIANTS[0]}  # the BL01 variant in force
+# the BL01 variant in force
+RULES = {events.LAUNCH: VARIANTS[1], events.SINCE_OCT_2023: VARIANTS[0]}
 
 
 def cells(days: pd.DataFrame) -> pd.DataFrame:

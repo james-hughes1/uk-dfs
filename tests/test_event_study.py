@@ -5,7 +5,7 @@ import pandas as pd
 import pytest
 
 from uk_dfs.evaluation import event_study as es
-from uk_dfs.features.events import A1, A2, event_table
+from uk_dfs.features.events import LAUNCH, SINCE_OCT_2023, event_table
 
 DAYS = pd.date_range("2022-11-01", "2022-12-15")
 EVENT_DAY = pd.Timestamp("2022-11-30")  # a Wednesday
@@ -90,15 +90,16 @@ def test_leave_one_out_placebos_sum_to_zero(temps):
 def test_regression_equals_difference_of_means(temps):
     """One event, balanced panel: the two-way fixed-effects δ is the 2×2 DiD exactly."""
     result = es.analyse(dfs_summary(), generation(dip=250, noise=80), temps, n_boot=50)
-    assert result.regression.loc[A1, "delta"] == pytest.approx(result.estimates.table.delta.iloc[0])
+    delta = result.estimates.table.delta.iloc[0]
+    assert result.regression.loc[LAUNCH, "delta"] == pytest.approx(delta)
 
 
 def test_analyse_end_to_end(temps):
     result = es.analyse(dfs_summary(claim=200), generation(dip=200), temps, n_boot=50)
-    assert result.funnel.loc["At least 4 matched days with clean data", A1] == 1
+    assert result.funnel.loc["At least 4 matched days with clean data", LAUNCH] == 1
     real = result.summary.set_index("test").loc["Real events"]
     assert real.ratio == pytest.approx(1.0)
-    assert set(result.robustness.group) == {A1}
+    assert set(result.robustness.group) == {LAUNCH}
     rb = result.robustness
     assert len(rb) == len(es.VARIANTS)
     cols = ["ratio", "lo", "hi"]
@@ -158,6 +159,6 @@ def test_event_table_groups_half_hours():
     ev = event_table(summary)
     assert list(ev.minutes) == [90, 30, 30]
     assert list(ev.m0) == [990, 540, 1020]
-    assert list(ev.group) == [A1, A1, A2]
+    assert list(ev.group) == [LAUNCH, LAUNCH, SINCE_OCT_2023]
     assert list(ev.has_settled) == [False, True, True]
     assert ev.claim.iloc[0] == pytest.approx(85)

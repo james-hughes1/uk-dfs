@@ -93,9 +93,11 @@ def plot_overpayment(spend: pd.DataFrame, dec: pd.DataFrame, over: pd.DataFrame)
     return fig
 
 
-def web_data(spend: pd.DataFrame, dec: pd.DataFrame, over: pd.DataFrame) -> dict:
+def web_data(spend: pd.DataFrame, dec: pd.DataFrame, over: pd.DataFrame,
+             events: pd.DataFrame) -> dict:  # fmt: skip
     return {
         "spend": spend.rename_axis("period").reset_index(),
+        "events": events.assign(start=events.start.dt.strftime("%Y-%m-%dT%H:%M")),
         "scenarios": dec.reset_index(),
         "overpayment": over.rename_axis("scenario").reset_index(),
     }

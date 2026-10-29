@@ -31,7 +31,7 @@ proportional overpayment is a lower bound.
 import numpy as np
 import pandas as pd
 
-from uk_dfs.features.events import IN_DAY_ADJUSTMENT_REMOVED
+from uk_dfs.features.events import IN_DAY_ADJUSTMENT_REMOVED, LAUNCH, MARKET, SECOND, turn_down
 
 # name -> (true saving %, foresight ρ, label)
 SCENARIOS = {
@@ -40,11 +40,11 @@ SCENARIOS = {
     "S3": (10, 0.1, "Weak response, slight foresight"),
     "S4": (5, 0.3, "Very weak response, modest foresight"),
 }
-# Settlement periods: the in-day adjustment era, the last high-price winter, merit-based DFS
+# Settlement periods: DFS's three phases (`features.events`)
 PERIODS = {
-    "2022/23": (None, IN_DAY_ADJUSTMENT_REMOVED),
-    "2023/24": (IN_DAY_ADJUSTMENT_REMOVED, pd.Timestamp("2024-06-01")),
-    "Nov 2024 on": (pd.Timestamp("2024-06-01"), None),
+    LAUNCH: (None, IN_DAY_ADJUSTMENT_REMOVED),
+    SECOND: (IN_DAY_ADJUSTMENT_REMOVED, pd.Timestamp("2024-06-01")),
+    MARKET: (pd.Timestamp("2024-06-01"), None),
 }
 PARTS = ("true", "baseline", "floor", "selection")
 
@@ -56,24 +56,49 @@ def grid_points(scenarios: dict = SCENARIOS) -> tuple[list, list]:
     return savings, rhos
 
 
+def period_of(start: pd.Series, periods: dict = PERIODS) -> pd.Series:
+    """The settlement period each timestamp falls in (None outside every period)."""
+    out = pd.Series(None, index=start.index, dtype=object)
+    for name, (lo, hi) in periods.items():
+        m = pd.Series(True, index=start.index)
+        if lo is not None:
+            m &= start >= lo
+        if hi is not None:
+            m &= start < hi
+        out[m] = name
+    return out
+
+
 def settled_spend(summary: pd.DataFrame, periods: dict = PERIODS) -> pd.DataFrame:
     """Turn-down settled volume (MWh), settled cost (£) and unsettled half-hours per
     period, from `neso.load_dfs()`'s half-hourly summary, plus a Total row."""
     dn = summary[summary.direction == "Downwards"]
+    label = period_of(dn.start, periods)
     rows = {}
-    for name, (lo, hi) in periods.items():
-        m = pd.Series(True, index=dn.index)
-        if lo is not None:
-            m &= dn.start >= lo
-        if hi is not None:
-            m &= dn.start < hi
-        p = dn[m]
+    for name in periods:
+        p = dn[label == name]
         rows[name] = {"settled_mwh": p.settled.sum() / 2, "cost": p.settled_cost.sum(),
                       "unsettled_hh": int((p.settled.isna() & (p.proc > 0)).sum())}  # fmt: skip
     out = pd.DataFrame(rows).T
     out.loc["Total"] = out.sum()
     out["price"] = out.cost / out.settled_mwh
     return out
+
+
+def event_prices(summary: pd.DataFrame, periods: dict = PERIODS) -> pd.DataFrame:
+    """One row per turn-down event (`features.events.turn_down`): start, period, test,
+    procured MWh, accepted bid cost (£) and the average accepted price (£/MWh). Accepted
+    rather than settled, so events NESO hasn't settled yet still have a size and price."""
+    dn = turn_down(summary)
+    out = dn.groupby("event").agg(
+        start=("start", "first"),
+        test=("type", lambda t: (t == "Test").any()),
+        procured_mwh=("proc", lambda mw: mw.sum() / 2),
+        cost=("cost", "sum"),
+    )
+    out.insert(1, "period", period_of(out.start, periods))
+    out["price"] = out.cost / out.procured_mwh
+    return out.reset_index(drop=True)
 
 
 def decompose(grid: pd.DataFrame, scenarios: dict = SCENARIOS) -> pd.DataFrame:
@@ -114,7 +139,8 @@ if __name__ == "__main__":
     from uk_dfs.reporting.outputs import save
     from uk_dfs.reporting.overpayment import plot_overpayment, text_report, web_data
 
-    spend = settled_spend(neso.load_dfs())
+    summary = neso.load_dfs()
+    spend = settled_spend(summary)
     savings, rhos = grid_points()
     panel = Panel.load()
     dec = decompose(floor.grid(panel, savings=savings, rhos=rhos))
@@ -127,4 +153,5 @@ if __name__ == "__main__":
         print(f"  {q:.0%}: " + "; ".join(
             f"{k} real share {r.real_share:.2f}, selection {r.selection * 100:.0f}/100, "
             f"£{total[k]:.1f}m" for k, r in d.iterrows()))  # fmt: skip
-    save("overpayment", plot_overpayment(spend, dec, over), web_data(spend, dec, over))
+    events = event_prices(summary)
+    save("overpayment", plot_overpayment(spend, dec, over), web_data(spend, dec, over, events))

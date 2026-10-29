@@ -4,10 +4,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from uk_dfs.features.events import A1, A2
+from uk_dfs.features.events import LAUNCH, SINCE_OCT_2023
 from uk_dfs.reporting.style import BLUE, INK2, MUTED, ORANGE, style
 
-COLOURS = {A1: BLUE, A2: ORANGE}
+COLOURS = {LAUNCH: BLUE, SINCE_OCT_2023: ORANGE}
 SERIES = {"claim_pct": ("Plain claim", BLUE), "floored_pct": ("Floored per half-hour", ORANGE)}
 
 
@@ -29,7 +29,7 @@ def plot_dfs_conditions(ev: pd.DataFrame, results: dict, ref: dict) -> plt.Figur
         rows = []
         for name, out in results.items():
             for _, r in out[out.in_force].iterrows():
-                rows.append((f"{r.group.split(':')[0]} · {name}", r))
+                rows.append((f"{r.group} · {name}", r))
         y = np.arange(len(rows))[::-1]
         for k, (label, colour) in SERIES.items():
             v = np.array([r[k] for _, r in rows])
