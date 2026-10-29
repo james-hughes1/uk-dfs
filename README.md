@@ -2,10 +2,9 @@
 
 Does the flexibility NESO pays for through the Demand Flexibility Service (DFS) show up in the data?
 
-- **National check:** does claimed delivery appear as a dip in GB demand?
-- **Household check:** how biased is the official BL01 baseline, and when?
+Contains code that runs statistical analysis on NESO's DFS data and the 2013 Low Carbon London study.
 
-> Work in progress. Findings will lead this README once we have them.
+Link to the interactive website [here](http://localhost:8000/#image-0) which summarises the key findings.
 
 ## Setup
 
@@ -87,7 +86,7 @@ done
 
 ## Web app: the study in ten images
 
-`web/` is a static site with no build step. It has ten cards you swipe or arrow through, each with one chart (six have controls, all have hover readouts), a short caption and a "show the numbers" table. It works on a phone and in light or dark mode.
+`web/` is a static site with no build step. It opens on a summary card (what the project asks, the three questions with expandable findings, and links to the repo and LinkedIn), followed by ten cards you swipe or arrow through, each with one chart (six have controls, all have hover readouts), a short caption with numbered, linked citations for outside facts, and a "show the numbers" table. It works on a phone and in light or dark mode.
 
 ```bash
 open web/index.html                      # or: python -m http.server -d web 8000
@@ -97,6 +96,7 @@ The data comes from `web/data/*.js`, which the analyses above write, so rerunnin
 
 | # | Card | Data from |
 | --- | --- | --- |
+| 0 | Summary: the three questions, each expanding to its findings, with links to the cards behind them | text (total £ from `overpayment`) |
 | 1 | Every turn-down event over time: accepted price and size; £ settled per phase | `overpayment` |
 | 2 | One home's day: baseline vs actual, current vs 2022/23 rules (interactive) | `baseline_error` |
 | 3 | National event study, launch winter / since Oct 2023 (interactive) | `event_study` |
