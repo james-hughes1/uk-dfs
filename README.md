@@ -101,12 +101,12 @@ The data comes from `web/data/*.js`, which the analyses above write, so rerunnin
 | 2 | One home's day: baseline vs actual, current vs 2022/23 rules (interactive) | `baseline_error` |
 | 3 | National event study, launch winter / since Oct 2023 (interactive) | `event_study` |
 | 4 | One home vs the portfolio: noise vs bias | `baseline_error` |
-| 5 | Daily error vs temperature change (interactive) | `baseline_error`, `dfs_conditions` |
-| 6 | Better baselines: bias by temperature change | `better_baselines` |
-| 7 | Reality check: claim as % of a real, randomised effect | `reality_check` |
-| 8 | The settlement floor: true saving and foresight sliders (interactive) | `floor` |
-| 9 | Overpayment scenarios S1–S4 (interactive) | `overpayment` |
-| 10 | Electrification: EV phantom delivery calculator, recommendations | arithmetic in the page |
+| 5 | Daily error vs temperature change, test year, for BL01, the 2022/23 in-day adjustment, BL01 × temperature and gradient boosting, with each one's MAE (interactive) | `better_baselines`, `dfs_conditions` |
+| 6 | Reality check: claim as % of a real, randomised effect | `reality_check` |
+| 7 | The settlement floor: true saving and foresight sliders (interactive) | `floor` |
+| 8 | Market phase: £ paid under S1–S4, split into real delivery, baseline error, floor and selection; recommendations | `overpayment` |
+| 9 | Electrification: one household's energy, gas and petrol vs heat pump and EV; UK uptake | figures in the page (sources in the caption) |
+| 10 | Beyond DFS: smart time-of-use tariffs (Ofgem, Jan 2026), VPP scale, the limits of both | figures in the page (sources in the caption) |
 
 The headline numbers from all of these are gathered on one page at the front of the report: `reports/report/key_results.tex`.
 
